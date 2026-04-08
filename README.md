@@ -17,3 +17,4 @@ Git 명령어 입력하기
 
 [main 파일 불러오는 방법]
 git pull origin main
+git restore README.md
