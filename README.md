@@ -14,3 +14,6 @@ Git 명령어 입력하기
     git add .
     git commit -m "README 파일 테스트 수정"
     git push origin main
+
+[main 파일 불러오는 방법]
+git pull origin main
