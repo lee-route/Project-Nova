@@ -73,3 +73,11 @@ Plugins/**/Intermediate/*
 
 # Cache files for the editor to use
 DerivedDataCache/*
+
+# Unreal project in subfolder
+NovaUproject/Binaries/
+NovaUproject/Build/
+NovaUproject/Saved/
+NovaUproject/Intermediate/
+NovaUproject/DerivedDataCache/
+NovaUproject/.vs/
