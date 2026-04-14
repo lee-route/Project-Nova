@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quest Distortion Test</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>퀘스트 정보 왜곡 테스트 인터페이스</h1>
+      <p class="desc">
+        결정론 엔진이 정보를 왜곡/전파하고, LLM은 전달된 JSON만 기반으로 대사를 생성합니다.
+      </p>
+
+      <form id="control-form" class="panel controls">
+        <h2>Scenario Controls</h2>
+        <label>
+          Scenario Text
+          <textarea
+            name="scenarioText"
+            rows="3"
+            placeholder="예: 늑대 3마리가 북문으로 이동했다"
+          >wolf 3 move north gate</textarea>
+        </label>
+        <div class="grid">
+          <label>
+            Sender Fear
+            <input type="number" step="0.01" min="0" max="1" name="senderFear" value="0.82" />
+          </label>
+          <label>
+            Sender Hostility
+            <input type="number" step="0.01" min="0" max="1" name="senderHostility" value="0.62" />
+          </label>
+          <label>
+            Sender Trust
+            <input type="number" step="0.01" min="0" max="1" name="senderTrust" value="0.55" />
+          </label>
+          <label>
+            Receiver Credulity
+            <input type="number" step="0.01" min="0" max="1" name="receiverCredulity" value="0.86" />
+          </label>
+          <label>
+            Receiver Trust
+            <input type="number" step="0.01" min="0" max="1" name="receiverTrust" value="0.65" />
+          </label>
+          <label>
+            Relation Trust_Level
+            <input type="number" step="0.01" min="0" max="1" name="trustLevel" value="0.74" />
+          </label>
+        </div>
+        <button
+          type="button"
+          id="run-pipeline"
+          onclick="document.getElementById('click-indicator').textContent='클릭 감지: ' + new Date().toLocaleTimeString();"
+        >
+          Run Pipeline
+        </button>
+        <p id="click-indicator">클릭 감지 대기 중...</p>
+      </form>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>출력 텍스트</h2>
+          <button type="button" class="toggle-btn" data-target="out-dialogue-main">접기</button>
+        </div>
+        <textarea id="out-dialogue-main" class="dialogue-output" rows="5" readonly></textarea>
+      </section>
+      
+      <section class="panel">
+        <div class="panel-head">
+          <h2>진단 로그</h2>
+          <button type="button" class="toggle-btn" data-target="debug-log">접기</button>
+        </div>
+        <pre id="debug-log">[init] debug panel ready</pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>1) Atomic Raw Info</h2>
+          <button type="button" class="toggle-btn" data-target="out-base">접기</button>
+        </div>
+        <pre id="out-base"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>2) Distorted_By_Sender</h2>
+          <button type="button" class="toggle-btn" data-target="out-sender">접기</button>
+        </div>
+        <pre id="out-sender"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>3) Interpreted_By_Receiver</h2>
+          <button type="button" class="toggle-btn" data-target="out-receiver">접기</button>
+        </div>
+        <pre id="out-receiver"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>4) Receiver Knowledge Base</h2>
+          <button type="button" class="toggle-btn" data-target="out-kb">접기</button>
+        </div>
+        <pre id="out-kb"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>5) LLM Expression Layer (Mock)</h2>
+          <button type="button" class="toggle-btn" data-target="out-dialogue">접기</button>
+        </div>
+        <pre id="out-dialogue"></pre>
+      </section>
+    </main>
+    <script>
+      window.__NPC_DEBUG = [];
+      window.__appendInlineDebug = function (message) {
+        var box = document.getElementById("debug-log");
+        if (!box) return;
+        box.textContent += "\n[inline] " + message;
+      };
+      window.__appendInlineDebug("bootstrap script loaded");
+      window.addEventListener("error", function (event) {
+        window.__NPC_DEBUG.push("[window.error] " + (event.message || "unknown error"));
+        window.__appendInlineDebug("window.error: " + (event.message || "unknown error"));
+      });
+    </script>
+    <script
+      src="./quest-system.js"
+      onload="window.__appendInlineDebug('quest-system.js loaded')"
+      onerror="window.__appendInlineDebug('quest-system.js load failed')"
+    ></script>
+    <script
+      src="./app.js"
+      onload="window.__appendInlineDebug('app.js loaded')"
+      onerror="window.__appendInlineDebug('app.js load failed')"
+    ></script>
+  </body>
+</html>
