@@ -1,0 +1,6 @@
+[submodule "Plugins/XFXInfinityBladeEffects~"]
+	path = Plugins/XFXInfinityBladeEffects~
+	url = https://github.com/miniherb13/XFXInfinityBladeEffects.git
+[submodule "Plugins/XEnvInfinityGrasslands"]
+	path = Plugins/XEnvInfinityGrasslands
+	url = https://github.com/miniherb13/XEnvInfinityGrasslands.git
