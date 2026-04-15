@@ -1,0 +1,32 @@
+# Unreal Engine
+Binaries/
+Build/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# IDE / OS
+.vs/
+.vscode/
+*.VC.db
+*.VC.opendb
+*.suo
+*.user
+*.userprefs
+*.sln
+*.opensdf
+*.sdf
+*.ipch
+*.pdb
+*.obj
+*.pch
+*.exp
+*.lib
+*.dll
+*.exe
+
+# Unreal generated project files
+*.xcodeproj
+*.xcworkspace
+*.code-workspace
+

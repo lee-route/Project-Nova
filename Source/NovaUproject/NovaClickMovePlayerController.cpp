@@ -3,8 +3,11 @@
 #include "NovaClickMovePlayerController.h"
 
 #include "InputCoreTypes.h"
+#include "Camera/CameraComponent.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/SpringArmComponent.h"
 #include "Engine/Engine.h"
+#include "Engine/World.h"
 
 ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 {
@@ -19,6 +22,11 @@ void ANovaClickMovePlayerController::BeginPlay()
 {
 	Super::BeginPlay();
 
+	UE_LOG(LogTemp, Display, TEXT("NOVA PC BeginPlay: %s Pawn=%s World=%s"),
+		*GetClass()->GetName(),
+		GetPawn() ? *GetPawn()->GetClass()->GetName() : TEXT("None"),
+		GetWorld() ? *GetWorld()->GetName() : TEXT("None"));
+
 	// Ensure mouse clicks are routed to the game.
 	bShowMouseCursor = true;
 	bEnableClickEvents = true;
@@ -28,11 +36,26 @@ void ANovaClickMovePlayerController::BeginPlay()
 	FInputModeGameAndUI Mode;
 	Mode.SetHideCursorDuringCapture(false);
 	SetInputMode(Mode);
+
+	if (GEngine)
+	{
+		const FString PawnName = GetPawn() ? GetPawn()->GetClass()->GetName() : TEXT("None");
+		GEngine->AddOnScreenDebugMessage(
+			-1,
+			5.0f,
+			FColor::Cyan,
+			FString::Printf(TEXT("Nova PC BeginPlay. Pawn=%s (V: camera, Shift+V: control)"), *PawnName)
+		);
+	}
 }
 
 void ANovaClickMovePlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
+
+	UE_LOG(LogTemp, Display, TEXT("NOVA PC SetupInputComponent: %s InputComponent=%s"),
+		*GetClass()->GetName(),
+		InputComponent ? *InputComponent->GetClass()->GetName() : TEXT("None"));
 
 	// No project input mappings required.
 	InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &ANovaClickMovePlayerController::OnLeftClickPressed);
@@ -175,10 +198,17 @@ void ANovaClickMovePlayerController::UpdateDestinationUnderCursor(bool bPrintDeb
 
 void ANovaClickMovePlayerController::OnVPressed()
 {
-	// Only toggle when Shift is held.
+	UE_LOG(LogTemp, Display, TEXT("NOVA V Pressed. Shift=%d Pawn=%s"),
+		(IsInputKeyDown(EKeys::LeftShift) || IsInputKeyDown(EKeys::RightShift)) ? 1 : 0,
+		GetPawn() ? *GetPawn()->GetClass()->GetName() : TEXT("None"));
+
 	const bool bShiftDown = IsInputKeyDown(EKeys::LeftShift) || IsInputKeyDown(EKeys::RightShift);
 	if (!bShiftDown)
 	{
+		// V alone: toggle camera mode (top-down <-> 3rd person) on the currently possessed pawn,
+		// even if it's a blueprint template character.
+		ToggleCameraMode();
+
 		return;
 	}
 
@@ -187,6 +217,118 @@ void ANovaClickMovePlayerController::OnVPressed()
 
 	// Requested style: call SetControlMode with a different argument each press.
 	SetControlMode(NewMode);
+}
+
+void ANovaClickMovePlayerController::ToggleCameraMode()
+{
+	APawn* P = GetPawn();
+	if (!P)
+	{
+		UE_LOG(LogTemp, Display, TEXT("NOVA ToggleCameraMode aborted: no pawn"));
+		return;
+	}
+
+	bIsTopDownCamera = !bIsTopDownCamera;
+	UE_LOG(LogTemp, Display, TEXT("NOVA ToggleCameraMode -> %s"),
+		bIsTopDownCamera ? TEXT("TopDown") : TEXT("ThirdPerson"));
+
+	if (bIsTopDownCamera)
+	{
+		ApplyTopDownCamera();
+	}
+	else
+	{
+		ApplyThirdPersonCamera();
+	}
+}
+
+static USpringArmComponent* FindSpringArmOnPawn(APawn* P)
+{
+	if (!P)
+	{
+		return nullptr;
+	}
+
+	// Works for both C++ and Blueprint-added components.
+	if (USpringArmComponent* Arm = P->FindComponentByClass<USpringArmComponent>())
+	{
+		return Arm;
+	}
+
+	return nullptr;
+}
+
+static UCameraComponent* FindCameraOnPawn(APawn* P)
+{
+	if (!P)
+	{
+		return nullptr;
+	}
+
+	if (UCameraComponent* Cam = P->FindComponentByClass<UCameraComponent>())
+	{
+		return Cam;
+	}
+
+	return nullptr;
+}
+
+void ANovaClickMovePlayerController::ApplyTopDownCamera()
+{
+	APawn* P = GetPawn();
+	USpringArmComponent* Arm = FindSpringArmOnPawn(P);
+	UCameraComponent* Cam = FindCameraOnPawn(P);
+	if (!Arm || !Cam)
+	{
+		UE_LOG(LogTemp, Display, TEXT("NOVA ApplyTopDownCamera failed: Arm=%s Cam=%s Pawn=%s"),
+			Arm ? *Arm->GetName() : TEXT("None"),
+			Cam ? *Cam->GetName() : TEXT("None"),
+			P ? *P->GetClass()->GetName() : TEXT("None"));
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("No SpringArm/Camera found on Pawn"));
+		}
+		return;
+	}
+
+	Arm->TargetArmLength = 800.0f;
+	Arm->SetRelativeRotation(FRotator(-45.0f, 0.0f, 0.0f));
+	Arm->bUsePawnControlRotation = false;
+	Arm->bInheritPitch = false;
+	Arm->bInheritRoll = false;
+	Arm->bInheritYaw = false;
+	Arm->bDoCollisionTest = false;
+
+	Cam->bUsePawnControlRotation = false;
+}
+
+void ANovaClickMovePlayerController::ApplyThirdPersonCamera()
+{
+	APawn* P = GetPawn();
+	USpringArmComponent* Arm = FindSpringArmOnPawn(P);
+	UCameraComponent* Cam = FindCameraOnPawn(P);
+	if (!Arm || !Cam)
+	{
+		UE_LOG(LogTemp, Display, TEXT("NOVA ApplyThirdPersonCamera failed: Arm=%s Cam=%s Pawn=%s"),
+			Arm ? *Arm->GetName() : TEXT("None"),
+			Cam ? *Cam->GetName() : TEXT("None"),
+			P ? *P->GetClass()->GetName() : TEXT("None"));
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("No SpringArm/Camera found on Pawn"));
+		}
+		return;
+	}
+
+	Arm->TargetArmLength = 400.0f;
+	Arm->SetRelativeRotation(FRotator(-15.0f, 0.0f, 0.0f));
+	Arm->bUsePawnControlRotation = true;
+	Arm->bInheritPitch = true;
+	Arm->bInheritRoll = true;
+	Arm->bInheritYaw = true;
+	Arm->bDoCollisionTest = true;
+
+	Cam->bUsePawnControlRotation = false;
 }
 
 void ANovaClickMovePlayerController::MoveForward(float Value)

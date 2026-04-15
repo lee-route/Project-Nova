@@ -35,6 +35,10 @@ private:
 	void MoveForward(float Value);
 	void MoveRight(float Value);
 
+	void ToggleCameraMode();
+	void ApplyTopDownCamera();
+	void ApplyThirdPersonCamera();
+
 	bool bHasDestination = false;
 	FVector Destination = FVector::ZeroVector;
 
@@ -49,5 +53,8 @@ private:
 
 	UPROPERTY(VisibleInstanceOnly, Category = "Control")
 	ENovaControlMode ControlMode = ENovaControlMode::ClickMove;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Camera")
+	bool bIsTopDownCamera = true;
 };
 
