@@ -18,11 +18,11 @@
 
 ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 {
-	bShowMouseCursor = true;
+	bShowMouseCursor = false;
 	bEnableClickEvents = true;
-	bEnableMouseOverEvents = true;
+	bEnableMouseOverEvents = false;
 
-	DefaultMouseCursor = EMouseCursor::Default;
+	DefaultMouseCursor = EMouseCursor::None;
 
 	static ConstructorHelpers::FObjectFinder<UInputMappingContext> IMC_Default(
 		TEXT("/Game/Input/IMC_Default.IMC_Default")
@@ -43,13 +43,12 @@ void ANovaClickMovePlayerController::BeginPlay()
 		GetWorld() ? *GetWorld()->GetName() : TEXT("None"));
 
 	// Ensure mouse clicks are routed to the game.
-	bShowMouseCursor = true;
+	bShowMouseCursor = false;
 	bEnableClickEvents = true;
-	bEnableMouseOverEvents = true;
+	bEnableMouseOverEvents = false;
 
-	// Game+UI input mode tends to be the most reliable for mouse cursor projects.
-	FInputModeGameAndUI Mode;
-	Mode.SetHideCursorDuringCapture(false);
+	// Game-only input; cursor stays hidden but click events still work.
+	FInputModeGameOnly Mode;
 	SetInputMode(Mode);
 
 	// Enhanced Input: ensure IMC_Default is applied (Dash, Move, etc).
@@ -176,18 +175,6 @@ void ANovaClickMovePlayerController::OnLeftClickPressed()
 		return;
 	}
 
-	// Some viewport capture modes hide the cursor on click; force it visible while holding.
-	if (bShowCursorWhileHoldingMove)
-	{
-		bShowMouseCursor = true;
-		bEnableClickEvents = true;
-		bEnableMouseOverEvents = true;
-
-		FInputModeGameAndUI Mode;
-		Mode.SetHideCursorDuringCapture(false);
-		SetInputMode(Mode);
-	}
-
 	bIsHoldingMove = true;
 	UpdateDestinationUnderCursor(/*bPrintDebug*/ true);
 }
@@ -196,12 +183,6 @@ void ANovaClickMovePlayerController::OnLeftClickReleased()
 {
 	bIsHoldingMove = false;
 	// Intentionally keep bHasDestination as-is so we continue to the last point.
-
-	if (bShowCursorWhileHoldingMove)
-	{
-		// If you want it always visible, set bShowCursorWhileHoldingMove=false and rely on BeginPlay.
-		bShowMouseCursor = false;
-	}
 }
 
 void ANovaClickMovePlayerController::UpdateDestinationUnderCursor(bool bPrintDebug)
