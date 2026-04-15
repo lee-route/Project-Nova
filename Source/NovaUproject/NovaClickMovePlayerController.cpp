@@ -14,6 +14,7 @@
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 #include "Particles/ParticleSystem.h"
+#include "Blueprint/UserWidget.h"
 #include "UObject/ConstructorHelpers.h"
 
 ANovaClickMovePlayerController::ANovaClickMovePlayerController()
@@ -51,6 +52,15 @@ void ANovaClickMovePlayerController::BeginPlay()
 	FInputModeGameAndUI Mode;
 	Mode.SetHideCursorDuringCapture(false);
 	SetInputMode(Mode);
+
+	// Optional: replace OS cursor image with a UMG widget cursor.
+	if (CursorWidgetClass)
+	{
+		if (UUserWidget* W = CreateWidget<UUserWidget>(this, CursorWidgetClass))
+		{
+			SetMouseCursorWidget(EMouseCursor::Default, W);
+		}
+	}
 
 	// Enhanced Input: ensure IMC_Default is applied (Dash, Move, etc).
 	EnsureDefaultMappingContext();

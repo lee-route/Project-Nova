@@ -6,6 +6,7 @@
 
 class UInputMappingContext;
 class UFXSystemAsset;
+class UUserWidget;
 
 UENUM(BlueprintType)
 enum class ENovaControlMode : uint8
@@ -67,6 +68,10 @@ private:
 	// If true, show cursor only while LMB is held.
 	UPROPERTY(EditDefaultsOnly, Category = "Cursor")
 	bool bShowCursorWhileHoldingMove = true;
+
+	// Optional: replace OS cursor with a UMG cursor widget (e.g. arrow image).
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Cursor", meta = (AllowPrivateAccess = "true"))
+	TSubclassOf<UUserWidget> CursorWidgetClass;
 
 	UPROPERTY(VisibleInstanceOnly, Category = "Control")
 	ENovaControlMode ControlMode = ENovaControlMode::ClickMove;
