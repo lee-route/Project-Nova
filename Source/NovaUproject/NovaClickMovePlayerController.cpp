@@ -337,6 +337,9 @@ void ANovaClickMovePlayerController::ApplyTopDownCamera()
 	Arm->bDoCollisionTest = false;
 
 	Cam->bUsePawnControlRotation = false;
+
+	// For top-down, lock control yaw so WASD doesn't feel "diagonal" due to leftover controller rotation.
+	SetControlRotation(FRotator(0.f, 0.f, 0.f));
 }
 
 void ANovaClickMovePlayerController::ApplyThirdPersonCamera()
@@ -381,6 +384,13 @@ void ANovaClickMovePlayerController::MoveForward(float Value)
 		return;
 	}
 
+	// In top-down mode, use world axes to keep movement consistent.
+	if (bIsTopDownCamera)
+	{
+		P->AddMovementInput(FVector::ForwardVector, Value);
+		return;
+	}
+
 	const FRotator ControlRot = GetControlRotation();
 	const FRotator YawRot(0.f, ControlRot.Yaw, 0.f);
 	const FVector Forward = FRotationMatrix(YawRot).GetUnitAxis(EAxis::X);
@@ -397,6 +407,12 @@ void ANovaClickMovePlayerController::MoveRight(float Value)
 	APawn* P = GetPawn();
 	if (!P)
 	{
+		return;
+	}
+
+	if (bIsTopDownCamera)
+	{
+		P->AddMovementInput(FVector::RightVector, Value);
 		return;
 	}
 
