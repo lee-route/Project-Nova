@@ -328,7 +328,7 @@ void ANovaClickMovePlayerController::ApplyTopDownCamera()
 		return;
 	}
 
-	Arm->TargetArmLength = 800.0f;
+	Arm->TargetArmLength = 1000.0f;
 	Arm->SetRelativeRotation(FRotator(-45.0f, 0.0f, 0.0f));
 	Arm->bUsePawnControlRotation = false;
 	Arm->bInheritPitch = false;
