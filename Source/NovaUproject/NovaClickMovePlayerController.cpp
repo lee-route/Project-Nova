@@ -4,18 +4,16 @@
 
 #include "InputCoreTypes.h"
 #include "Camera/CameraComponent.h"
+#include "GameFramework/Character.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
-#include "EnhancedInputSubsystems.h"
-#include "InputMappingContext.h"
 #include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
 #include "Particles/ParticleSystem.h"
 #include "Blueprint/UserWidget.h"
-#include "UObject/ConstructorHelpers.h"
 
 ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 {
@@ -24,14 +22,6 @@ ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 	bEnableMouseOverEvents = true;
 
 	DefaultMouseCursor = EMouseCursor::Default;
-
-	static ConstructorHelpers::FObjectFinder<UInputMappingContext> IMC_Default(
-		TEXT("/Game/Input/IMC_Default.IMC_Default")
-	);
-	if (IMC_Default.Succeeded())
-	{
-		DefaultMappingContext = IMC_Default.Object;
-	}
 }
 
 void ANovaClickMovePlayerController::BeginPlay()
@@ -62,9 +52,6 @@ void ANovaClickMovePlayerController::BeginPlay()
 		}
 	}
 
-	// Enhanced Input: ensure IMC_Default is applied (Dash, Move, etc).
-	EnsureDefaultMappingContext();
-
 	// PIE 시작 시점은 기본으로 디아블로(탑다운) 시점.
 	bIsTopDownCamera = true;
 	ApplyTopDownCamera();
@@ -78,25 +65,6 @@ void ANovaClickMovePlayerController::BeginPlay()
 			FColor::Cyan,
 			FString::Printf(TEXT("Nova PC BeginPlay. Pawn=%s (V: camera, Shift+V: control)"), *PawnName)
 		);
-	}
-}
-
-void ANovaClickMovePlayerController::EnsureDefaultMappingContext()
-{
-	if (!DefaultMappingContext)
-	{
-		UE_LOG(LogTemp, Display, TEXT("NOVA IMC_Default not found. Dash may not work."));
-		return;
-	}
-
-	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
-	{
-		Subsystem->AddMappingContext(DefaultMappingContext, 0);
-		UE_LOG(LogTemp, Display, TEXT("NOVA IMC_Default applied."));
-	}
-	else
-	{
-		UE_LOG(LogTemp, Display, TEXT("NOVA EnhancedInput subsystem missing. Dash may not work."));
 	}
 }
 
@@ -114,6 +82,9 @@ void ANovaClickMovePlayerController::SetupInputComponent()
 
 	// Shift + V: toggle control mode
 	InputComponent->BindKey(EKeys::V, IE_Pressed, this, &ANovaClickMovePlayerController::OnVPressed);
+
+	// Space: dash (jump removed)
+	InputComponent->BindKey(EKeys::SpaceBar, IE_Pressed, this, &ANovaClickMovePlayerController::OnDashPressed);
 
 	// Legacy axis mappings (Project Settings -> Input)
 	InputComponent->BindAxis(TEXT("MoveForward"), this, &ANovaClickMovePlayerController::MoveForward);
@@ -274,48 +245,62 @@ void ANovaClickMovePlayerController::SpawnClickMoveIndicator(const FVector& Worl
 
 void ANovaClickMovePlayerController::OnVPressed()
 {
-	UE_LOG(LogTemp, Display, TEXT("NOVA V Pressed. Shift=%d Pawn=%s"),
-		(IsInputKeyDown(EKeys::LeftShift) || IsInputKeyDown(EKeys::RightShift)) ? 1 : 0,
+	UE_LOG(LogTemp, Display, TEXT("NOVA V Pressed. Pawn=%s"),
 		GetPawn() ? *GetPawn()->GetClass()->GetName() : TEXT("None"));
 
-	const bool bShiftDown = IsInputKeyDown(EKeys::LeftShift) || IsInputKeyDown(EKeys::RightShift);
-	if (!bShiftDown)
-	{
-		// V alone: toggle camera mode (top-down <-> 3rd person) on the currently possessed pawn,
-		// even if it's a blueprint template character.
-		ToggleCameraMode();
-
-		return;
-	}
-
+	// V: toggle control mode (ClickMove <-> WASD)
 	const ENovaControlMode NewMode =
 		(ControlMode == ENovaControlMode::ClickMove) ? ENovaControlMode::WASD : ENovaControlMode::ClickMove;
 
-	// Requested style: call SetControlMode with a different argument each press.
 	SetControlMode(NewMode);
 }
 
-void ANovaClickMovePlayerController::ToggleCameraMode()
+void ANovaClickMovePlayerController::OnDashPressed()
 {
-	APawn* P = GetPawn();
-	if (!P)
+	ACharacter* C = Cast<ACharacter>(GetPawn());
+	if (!C)
 	{
-		UE_LOG(LogTemp, Display, TEXT("NOVA ToggleCameraMode aborted: no pawn"));
 		return;
 	}
 
-	bIsTopDownCamera = !bIsTopDownCamera;
-	UE_LOG(LogTemp, Display, TEXT("NOVA ToggleCameraMode -> %s"),
-		bIsTopDownCamera ? TEXT("TopDown") : TEXT("ThirdPerson"));
+	FVector Dir = FVector::ZeroVector;
 
-	if (bIsTopDownCamera)
+	if (ControlMode == ENovaControlMode::ClickMove)
 	{
-		ApplyTopDownCamera();
+		if (bHasDestination)
+		{
+			Dir = (Destination - C->GetActorLocation());
+			Dir.Z = 0.f;
+			Dir = Dir.GetSafeNormal();
+		}
+		else
+		{
+			FHitResult Hit;
+			if (GetHitResultUnderCursor(ECC_Visibility, false, Hit))
+			{
+				Dir = (Hit.Location - C->GetActorLocation());
+				Dir.Z = 0.f;
+				Dir = Dir.GetSafeNormal();
+			}
+		}
 	}
-	else
+
+	if (Dir.IsNearlyZero())
 	{
-		ApplyThirdPersonCamera();
+		Dir = C->GetLastMovementInputVector();
+		Dir.Z = 0.f;
+		Dir = Dir.GetSafeNormal();
 	}
+
+	if (Dir.IsNearlyZero())
+	{
+		Dir = C->GetActorForwardVector();
+		Dir.Z = 0.f;
+		Dir = Dir.GetSafeNormal();
+	}
+
+	const FVector LaunchVel = Dir * DashStrength + FVector(0.f, 0.f, DashUpwardStrength);
+	C->LaunchCharacter(LaunchVel, /*bXYOverride*/ true, /*bZOverride*/ true);
 }
 
 static USpringArmComponent* FindSpringArmOnPawn(APawn* P)
@@ -379,35 +364,6 @@ void ANovaClickMovePlayerController::ApplyTopDownCamera()
 
 	// For top-down, lock control yaw so WASD doesn't feel "diagonal" due to leftover controller rotation.
 	SetControlRotation(FRotator(0.f, 0.f, 0.f));
-}
-
-void ANovaClickMovePlayerController::ApplyThirdPersonCamera()
-{
-	APawn* P = GetPawn();
-	USpringArmComponent* Arm = FindSpringArmOnPawn(P);
-	UCameraComponent* Cam = FindCameraOnPawn(P);
-	if (!Arm || !Cam)
-	{
-		UE_LOG(LogTemp, Display, TEXT("NOVA ApplyThirdPersonCamera failed: Arm=%s Cam=%s Pawn=%s"),
-			Arm ? *Arm->GetName() : TEXT("None"),
-			Cam ? *Cam->GetName() : TEXT("None"),
-			P ? *P->GetClass()->GetName() : TEXT("None"));
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("No SpringArm/Camera found on Pawn"));
-		}
-		return;
-	}
-
-	Arm->TargetArmLength = 400.0f;
-	Arm->SetRelativeRotation(FRotator(-15.0f, 0.0f, 0.0f));
-	Arm->bUsePawnControlRotation = true;
-	Arm->bInheritPitch = true;
-	Arm->bInheritRoll = true;
-	Arm->bInheritYaw = true;
-	Arm->bDoCollisionTest = true;
-
-	Cam->bUsePawnControlRotation = false;
 }
 
 void ANovaClickMovePlayerController::MoveForward(float Value)

@@ -4,7 +4,6 @@
 #include "GameFramework/PlayerController.h"
 #include "NovaClickMovePlayerController.generated.h"
 
-class UInputMappingContext;
 class UFXSystemAsset;
 class UUserWidget;
 
@@ -30,10 +29,6 @@ protected:
 
 	void SetControlMode(ENovaControlMode NewMode);
 
-	// Exposed so Blueprint child (Class Defaults) can set VFX easily.
-	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Input", meta = (AllowPrivateAccess = "true"))
-	UInputMappingContext* DefaultMappingContext = nullptr;
-
 	// Optional VFX spawned when setting a click-move destination.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "ClickMove|VFX", meta = (AllowPrivateAccess = "true"))
 	UFXSystemAsset* ClickMoveIndicatorFx = nullptr;
@@ -47,14 +42,10 @@ private:
 	void UpdateDestinationUnderCursor(bool bPrintDebug);
 
 	void OnVPressed();
+	void OnDashPressed();
 	void MoveForward(float Value);
 	void MoveRight(float Value);
-
-	void ToggleCameraMode();
 	void ApplyTopDownCamera();
-	void ApplyThirdPersonCamera();
-
-	void EnsureDefaultMappingContext();
 	void SpawnClickMoveIndicator(const FVector& WorldLocation);
 
 	bool bHasDestination = false;
@@ -78,5 +69,11 @@ private:
 
 	UPROPERTY(VisibleInstanceOnly, Category = "Camera")
 	bool bIsTopDownCamera = true;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Dash")
+	float DashStrength = 1600.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Dash")
+	float DashUpwardStrength = 0.0f;
 };
 
