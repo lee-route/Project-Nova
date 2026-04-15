@@ -18,11 +18,11 @@
 
 ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 {
-	bShowMouseCursor = false;
+	bShowMouseCursor = true;
 	bEnableClickEvents = true;
-	bEnableMouseOverEvents = false;
+	bEnableMouseOverEvents = true;
 
-	DefaultMouseCursor = EMouseCursor::None;
+	DefaultMouseCursor = EMouseCursor::Default;
 
 	static ConstructorHelpers::FObjectFinder<UInputMappingContext> IMC_Default(
 		TEXT("/Game/Input/IMC_Default.IMC_Default")
@@ -43,12 +43,13 @@ void ANovaClickMovePlayerController::BeginPlay()
 		GetWorld() ? *GetWorld()->GetName() : TEXT("None"));
 
 	// Ensure mouse clicks are routed to the game.
-	bShowMouseCursor = false;
+	bShowMouseCursor = true;
 	bEnableClickEvents = true;
-	bEnableMouseOverEvents = false;
+	bEnableMouseOverEvents = true;
 
-	// Game-only input; cursor stays hidden but click events still work.
-	FInputModeGameOnly Mode;
+	// Game+UI so cursor remains visible and consistent.
+	FInputModeGameAndUI Mode;
+	Mode.SetHideCursorDuringCapture(false);
 	SetInputMode(Mode);
 
 	// Enhanced Input: ensure IMC_Default is applied (Dash, Move, etc).
