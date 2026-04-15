@@ -8,6 +8,9 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "EnhancedInputSubsystems.h"
+#include "InputMappingContext.h"
+#include "UObject/ConstructorHelpers.h"
 
 ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 {
@@ -16,6 +19,14 @@ ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 	bEnableMouseOverEvents = true;
 
 	DefaultMouseCursor = EMouseCursor::Default;
+
+	static ConstructorHelpers::FObjectFinder<UInputMappingContext> IMC_Default(
+		TEXT("/Game/Input/IMC_Default.IMC_Default")
+	);
+	if (IMC_Default.Succeeded())
+	{
+		DefaultMappingContext = IMC_Default.Object;
+	}
 }
 
 void ANovaClickMovePlayerController::BeginPlay()
@@ -37,6 +48,13 @@ void ANovaClickMovePlayerController::BeginPlay()
 	Mode.SetHideCursorDuringCapture(false);
 	SetInputMode(Mode);
 
+	// Enhanced Input: ensure IMC_Default is applied (Dash, Move, etc).
+	EnsureDefaultMappingContext();
+
+	// PIE 시작 시점은 기본으로 디아블로(탑다운) 시점.
+	bIsTopDownCamera = true;
+	ApplyTopDownCamera();
+
 	if (GEngine)
 	{
 		const FString PawnName = GetPawn() ? GetPawn()->GetClass()->GetName() : TEXT("None");
@@ -46,6 +64,25 @@ void ANovaClickMovePlayerController::BeginPlay()
 			FColor::Cyan,
 			FString::Printf(TEXT("Nova PC BeginPlay. Pawn=%s (V: camera, Shift+V: control)"), *PawnName)
 		);
+	}
+}
+
+void ANovaClickMovePlayerController::EnsureDefaultMappingContext()
+{
+	if (!DefaultMappingContext)
+	{
+		UE_LOG(LogTemp, Display, TEXT("NOVA IMC_Default not found. Dash may not work."));
+		return;
+	}
+
+	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+	{
+		Subsystem->AddMappingContext(DefaultMappingContext, 0);
+		UE_LOG(LogTemp, Display, TEXT("NOVA IMC_Default applied."));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Display, TEXT("NOVA EnhancedInput subsystem missing. Dash may not work."));
 	}
 }
 

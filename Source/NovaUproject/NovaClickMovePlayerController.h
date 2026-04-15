@@ -4,6 +4,8 @@
 #include "GameFramework/PlayerController.h"
 #include "NovaClickMovePlayerController.generated.h"
 
+class UInputMappingContext;
+
 UENUM(BlueprintType)
 enum class ENovaControlMode : uint8
 {
@@ -39,6 +41,8 @@ private:
 	void ApplyTopDownCamera();
 	void ApplyThirdPersonCamera();
 
+	void EnsureDefaultMappingContext();
+
 	bool bHasDestination = false;
 	FVector Destination = FVector::ZeroVector;
 
@@ -56,5 +60,8 @@ private:
 
 	UPROPERTY(VisibleInstanceOnly, Category = "Camera")
 	bool bIsTopDownCamera = true;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Input")
+	UInputMappingContext* DefaultMappingContext = nullptr;
 };
 
