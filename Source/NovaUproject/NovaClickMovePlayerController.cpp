@@ -10,6 +10,8 @@
 #include "Engine/World.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 #include "UObject/ConstructorHelpers.h"
 
 ANovaClickMovePlayerController::ANovaClickMovePlayerController()
@@ -222,6 +224,12 @@ void ANovaClickMovePlayerController::UpdateDestinationUnderCursor(bool bPrintDeb
 	Destination = Hit.Location;
 	bHasDestination = true;
 
+	// Spawn an optional click-move indicator on fresh clicks (and when debug is requested).
+	if (bPrintDebug)
+	{
+		SpawnClickMoveIndicator(Destination);
+	}
+
 	if (bPrintDebug && GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(
@@ -231,6 +239,26 @@ void ANovaClickMovePlayerController::UpdateDestinationUnderCursor(bool bPrintDeb
 			FString::Printf(TEXT("Move to: X=%.0f Y=%.0f Z=%.0f"), Destination.X, Destination.Y, Destination.Z)
 		);
 	}
+}
+
+void ANovaClickMovePlayerController::SpawnClickMoveIndicator(const FVector& WorldLocation)
+{
+	if (!ClickMoveIndicatorFx)
+	{
+		return;
+	}
+
+	UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+		this,
+		ClickMoveIndicatorFx,
+		WorldLocation,
+		FRotator::ZeroRotator,
+		FVector(ClickMoveIndicatorScale),
+		/*bAutoDestroy*/ true,
+		/*bAutoActivate*/ true,
+		/*PoolingMethod*/ ENCPoolMethod::AutoRelease,
+		/*bPreCullCheck*/ true
+	);
 }
 
 void ANovaClickMovePlayerController::OnVPressed()

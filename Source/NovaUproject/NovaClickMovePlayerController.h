@@ -5,6 +5,7 @@
 #include "NovaClickMovePlayerController.generated.h"
 
 class UInputMappingContext;
+class UNiagaraSystem;
 
 UENUM(BlueprintType)
 enum class ENovaControlMode : uint8
@@ -28,6 +29,17 @@ protected:
 
 	void SetControlMode(ENovaControlMode NewMode);
 
+	// Exposed so Blueprint child (Class Defaults) can set VFX easily.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "Input", meta = (AllowPrivateAccess = "true"))
+	UInputMappingContext* DefaultMappingContext = nullptr;
+
+	// Optional VFX spawned when setting a click-move destination.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "ClickMove|VFX", meta = (AllowPrivateAccess = "true"))
+	UNiagaraSystem* ClickMoveIndicatorFx = nullptr;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "ClickMove|VFX", meta = (AllowPrivateAccess = "true"))
+	float ClickMoveIndicatorScale = 1.0f;
+
 private:
 	void OnLeftClickPressed();
 	void OnLeftClickReleased();
@@ -42,6 +54,7 @@ private:
 	void ApplyThirdPersonCamera();
 
 	void EnsureDefaultMappingContext();
+	void SpawnClickMoveIndicator(const FVector& WorldLocation);
 
 	bool bHasDestination = false;
 	FVector Destination = FVector::ZeroVector;
@@ -60,8 +73,5 @@ private:
 
 	UPROPERTY(VisibleInstanceOnly, Category = "Camera")
 	bool bIsTopDownCamera = true;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Input")
-	UInputMappingContext* DefaultMappingContext = nullptr;
 };
 
