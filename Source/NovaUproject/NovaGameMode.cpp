@@ -14,6 +14,17 @@ ANovaGameMode::ANovaGameMode()
 		DefaultPawnClass = DefaultPawnBP.Class;
 	}
 
-	PlayerControllerClass = ANovaClickMovePlayerController::StaticClass();
+	// Prefer the Blueprint child so we can set click-move indicator FX in BP.
+	static ConstructorHelpers::FClassFinder<APlayerController> NovaPCBp(
+		TEXT("/Game/ThirdPerson/Blueprints/BP_NovaPlayerController")
+	);
+	if (NovaPCBp.Succeeded())
+	{
+		PlayerControllerClass = NovaPCBp.Class;
+	}
+	else
+	{
+		PlayerControllerClass = ANovaClickMovePlayerController::StaticClass();
+	}
 }
 

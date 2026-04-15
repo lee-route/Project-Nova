@@ -10,8 +10,10 @@
 #include "Engine/World.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
+#include "Kismet/GameplayStatics.h"
 #include "NiagaraFunctionLibrary.h"
 #include "NiagaraSystem.h"
+#include "Particles/ParticleSystem.h"
 #include "UObject/ConstructorHelpers.h"
 
 ANovaClickMovePlayerController::ANovaClickMovePlayerController()
@@ -248,17 +250,34 @@ void ANovaClickMovePlayerController::SpawnClickMoveIndicator(const FVector& Worl
 		return;
 	}
 
-	UNiagaraFunctionLibrary::SpawnSystemAtLocation(
-		this,
-		ClickMoveIndicatorFx,
-		WorldLocation,
-		FRotator::ZeroRotator,
-		FVector(ClickMoveIndicatorScale),
-		/*bAutoDestroy*/ true,
-		/*bAutoActivate*/ true,
-		/*PoolingMethod*/ ENCPoolMethod::AutoRelease,
-		/*bPreCullCheck*/ true
-	);
+	if (UNiagaraSystem* Niagara = Cast<UNiagaraSystem>(ClickMoveIndicatorFx))
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			this,
+			Niagara,
+			WorldLocation,
+			FRotator::ZeroRotator,
+			FVector(ClickMoveIndicatorScale),
+			/*bAutoDestroy*/ true,
+			/*bAutoActivate*/ true,
+			/*PoolingMethod*/ ENCPoolMethod::AutoRelease,
+			/*bPreCullCheck*/ true
+		);
+		return;
+	}
+
+	if (UParticleSystem* Particle = Cast<UParticleSystem>(ClickMoveIndicatorFx))
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(
+			GetWorld(),
+			Particle,
+			FTransform(FRotator::ZeroRotator, WorldLocation, FVector(ClickMoveIndicatorScale)),
+			/*bAutoDestroy*/ true
+		);
+		return;
+	}
+
+	UE_LOG(LogTemp, Display, TEXT("NOVA ClickMoveIndicatorFx has unsupported type: %s"), *ClickMoveIndicatorFx->GetClass()->GetName());
 }
 
 void ANovaClickMovePlayerController::OnVPressed()

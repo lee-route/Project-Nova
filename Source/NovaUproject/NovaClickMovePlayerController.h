@@ -5,7 +5,7 @@
 #include "NovaClickMovePlayerController.generated.h"
 
 class UInputMappingContext;
-class UNiagaraSystem;
+class UFXSystemAsset;
 
 UENUM(BlueprintType)
 enum class ENovaControlMode : uint8
@@ -35,7 +35,7 @@ protected:
 
 	// Optional VFX spawned when setting a click-move destination.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "ClickMove|VFX", meta = (AllowPrivateAccess = "true"))
-	UNiagaraSystem* ClickMoveIndicatorFx = nullptr;
+	UFXSystemAsset* ClickMoveIndicatorFx = nullptr;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "ClickMove|VFX", meta = (AllowPrivateAccess = "true"))
 	float ClickMoveIndicatorScale = 1.0f;
