@@ -243,6 +243,20 @@ function createSoftGuardrailPrompt(persona) {
   ].join(" ");
 }
 
+function pickKoreanParticle(word, withBatchim, withoutBatchim) {
+  const text = String(word || "").trim();
+  if (!text) return withoutBatchim;
+  const lastChar = text.charAt(text.length - 1);
+  const code = lastChar.charCodeAt(0);
+  const HANGUL_BASE = 44032;
+  const HANGUL_END = 55203;
+  if (code < HANGUL_BASE || code > HANGUL_END) {
+    return withoutBatchim;
+  }
+  const hasBatchim = ((code - HANGUL_BASE) % 28) !== 0;
+  return hasBatchim ? withBatchim : withoutBatchim;
+}
+
 function buildContextGrounding(distortedData) {
   const truth = distortedData.truth_value;
   return {
@@ -267,10 +281,16 @@ function mockLLMGenerate(systemPrompt, groundedContext, persona) {
     hotblood_hunter: "격앙된 어조로 주먹을 쥐고",
   };
   const style = personaStyles[persona] || "신중한 어조로";
+  const subjectText = String(d.subject || "대상");
+  const subjectParticle = pickKoreanParticle(subjectText, "이", "가");
+  const actionText = String(d.action || "").replace(/(했고|했지만|했는데|하고|고|며|는데|지만)[.]?$/g, "").trim();
+  const naturalAction = /(다|했다|했다고|중이다|보인다|상태다)$/.test(actionText)
+    ? actionText
+    : `${actionText}했다`;
   return [
     `[System Guardrail] ${systemPrompt}`,
     `[Grounded DATA] ${JSON.stringify(groundedContext.dataOnly)}`,
-    `${style} 말한다: "${d.subject}가 ${d.action}했어. 수량은 대략 ${d.quantity}, 확신도는 ${
+    `${style} 말한다: "${subjectText}${subjectParticle} ${naturalAction}. 수량은 대략 ${d.quantity}, 확신도는 ${
       d.certainty
     } 정도다. (${d.source}의 정보)"`
   ].join("\n");
