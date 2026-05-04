@@ -142,6 +142,141 @@
     return normalized;
   }
 
+  function splitIntoSentences(fullText) {
+    var t = normalizeUserText(fullText);
+    if (!t) return [];
+    var chunks = t.split(/(?<=[.!?…])\s+/);
+    var out = [];
+    for (var i = 0; i < chunks.length; i += 1) {
+      var s = normalizeUserText(chunks[i]);
+      if (s) out.push(s);
+    }
+    if (out.length === 0) return [t];
+    return out;
+  }
+
+  function actionTypePriority(type) {
+    var order = { threat: 4, tactical_move: 3, routine: 2, state: 1, unknown: 0 };
+    return order[type] != null ? order[type] : 0;
+  }
+
+  function mergeParsedSentences(list) {
+    if (!list || list.length === 0) {
+      return {
+        subject: "wolf",
+        quantity: 3,
+        action: "move",
+        target: "north gate",
+        certainty: 0.75,
+        is_countable: true,
+        action_type: "unknown",
+        raw_text: "",
+        has_explicit_quantity: false,
+        parse_confidence: 0.5,
+        parse_mode: "structured",
+        sentenceParses: [],
+      };
+    }
+    if (list.length === 1) {
+      var only = list[0];
+      only.sentenceParses = [JSON.parse(JSON.stringify(only))];
+      return only;
+    }
+
+    var subjects = [];
+    var actions = [];
+    var targets = [];
+    var quantities = [];
+    var certainties = [];
+    var confidences = [];
+    var anyCountable = false;
+    var anyConservative = false;
+    var bestType = "unknown";
+    var bestPrio = -1;
+    var rawParts = [];
+    var hasExplicitAny = false;
+
+    for (var i = 0; i < list.length; i += 1) {
+      var p = list[i];
+      rawParts.push(p.raw_text || "");
+      if (p.subject) subjects.push(String(p.subject));
+      if (p.action) actions.push(String(p.action));
+      if (p.target && p.target !== "알 수 없는 장소") targets.push(String(p.target));
+      if (p.is_countable && isFinite(p.quantity)) quantities.push(Number(p.quantity));
+      if (isFinite(p.certainty)) certainties.push(Number(p.certainty));
+      if (isFinite(p.parse_confidence)) confidences.push(Number(p.parse_confidence));
+      if (p.is_countable) anyCountable = true;
+      if (p.parse_mode === "conservative_raw") anyConservative = true;
+      if (p.has_explicit_quantity) hasExplicitAny = true;
+      var pr = actionTypePriority(p.action_type);
+      if (pr > bestPrio) {
+        bestPrio = pr;
+        bestType = p.action_type || "unknown";
+      }
+    }
+
+    var subjectMerged = subjects[0] || "늑대";
+    var allSameSubject = true;
+    for (var s = 1; s < subjects.length; s += 1) {
+      if (subjects[s] !== subjects[0]) {
+        allSameSubject = false;
+        break;
+      }
+    }
+    if (!allSameSubject && subjects.length > 1) {
+      subjectMerged = subjectMerged + " 등";
+    }
+
+    var actionMerged = actions.filter(Boolean).join(" · ");
+    var targetMerged = targets.length ? targets.join(" / ") : list[0].target || "알 수 없는 장소";
+
+    var qtyMerged = 1;
+    if (anyCountable && quantities.length) {
+      qtyMerged = Math.max.apply(null, quantities);
+    } else if (quantities.length) {
+      qtyMerged = Math.max.apply(null, quantities);
+    }
+
+    var certMerged = certainties.length ? Math.min.apply(null, certainties) : 0.75;
+    var confAvg =
+      confidences.length > 0
+        ? Number(
+            (
+              confidences.reduce(function (a, b) {
+                return a + b;
+              }, 0) / confidences.length
+            ).toFixed(2)
+          )
+        : 0.6;
+
+    var modeMerged = anyConservative || confAvg < 0.6 ? "conservative_raw" : "structured";
+    var merged = {
+      subject: subjectMerged,
+      quantity: qtyMerged,
+      action: actionMerged || list[0].action,
+      target: targetMerged,
+      certainty: certMerged,
+      is_countable: anyCountable,
+      action_type: bestType,
+      raw_text: rawParts.join(" "),
+      has_explicit_quantity: hasExplicitAny,
+      parse_confidence: confAvg,
+      parse_mode: modeMerged,
+      sentenceParses: list.map(function (x) {
+        return JSON.parse(JSON.stringify(x));
+      }),
+    };
+
+    if (modeMerged === "conservative_raw") {
+      merged.action = rawParts.join(" ");
+      merged.is_countable = false;
+      merged.quantity = 1;
+      merged.target = "복합 입력";
+    }
+
+    return merged;
+  }
+
   function detectUncertainty(rawText) {
     var text = String(rawText || "");
     var lowCertaintyPatterns = [/같다/, /같아/, /추정/, /아마/, /듯/, /처럼 보/];
@@ -200,8 +335,8 @@
   }
 
   function parseScenarioText(scenarioText) {
-    var raw = normalizeUserText(scenarioText);
-    if (!raw) {
+    var full = normalizeUserText(scenarioText);
+    if (!full) {
       return {
         subject: "wolf",
         quantity: 3,
@@ -209,6 +344,22 @@
         target: "north gate",
       };
     }
+
+    var sentences = splitIntoSentences(full);
+    var perSentence = [];
+    for (var si = 0; si < sentences.length; si += 1) {
+      var one = parseSingleSentence(sentences[si]);
+      if (one) perSentence.push(one);
+    }
+    if (perSentence.length === 0) {
+      return mergeParsedSentences([]);
+    }
+    return mergeParsedSentences(perSentence);
+  }
+
+  function parseSingleSentence(sentenceText) {
+    var raw = normalizeUserText(sentenceText);
+    if (!raw) return null;
 
     var compact = raw.replace(/[,.!?]/g, " ");
     var tokens = compact.split(/\s+/).filter(Boolean);
