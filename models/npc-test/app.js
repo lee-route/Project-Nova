@@ -301,11 +301,18 @@
   }
 
   function classifyActionType(actionText, rawText) {
-    var text = (String(actionText || "") + " " + String(rawText || "")).toLowerCase();
-    if (CLASSIFY_KEYWORDS.threat && CLASSIFY_KEYWORDS.threat.test(text)) return "threat";
-    if (CLASSIFY_KEYWORDS.tactical_move && CLASSIFY_KEYWORDS.tactical_move.test(text)) return "tactical_move";
-    if (CLASSIFY_KEYWORDS.routine && CLASSIFY_KEYWORDS.routine.test(text)) return "routine";
-    if (CLASSIFY_KEYWORDS.state && CLASSIFY_KEYWORDS.state.test(text)) return "state";
+    var actionOnly = String(actionText || "").toLowerCase();
+    var rawOnly = String(rawText || "").toLowerCase();
+    var actionRules = CLASSIFY_KEYWORDS.action || {};
+    var rawHintRules = CLASSIFY_KEYWORDS.rawHint || {};
+    if (actionRules.threat && actionRules.threat.test(actionOnly)) return "threat";
+    if (actionRules.tactical_move && actionRules.tactical_move.test(actionOnly)) return "tactical_move";
+    if (actionRules.routine && actionRules.routine.test(actionOnly)) return "routine";
+    if (actionRules.state && actionRules.state.test(actionOnly)) return "state";
+    if (rawHintRules.threat && rawHintRules.threat.test(rawOnly)) return "threat";
+    if (rawHintRules.tactical_move && rawHintRules.tactical_move.test(rawOnly)) return "tactical_move";
+    if (rawHintRules.routine && rawHintRules.routine.test(rawOnly)) return "routine";
+    if (rawHintRules.state && rawHintRules.state.test(rawOnly)) return "state";
     return "unknown";
   }
 
@@ -389,9 +396,11 @@
     }
 
     var actionToken = "";
+    var actionCategoryFromPattern = "";
     for (var p = 0; p < ACTION_PATTERNS.length; p += 1) {
       if (ACTION_PATTERNS[p].regex.test(raw)) {
         actionToken = ACTION_PATTERNS[p].value;
+        actionCategoryFromPattern = ACTION_PATTERNS[p].category || "";
         break;
       }
     }
@@ -452,7 +461,7 @@
       cleanedTarget = timeContext || "일상 관찰";
     }
 
-    var actionType = classifyActionType(action, raw);
+    var actionType = actionCategoryFromPattern || classifyActionType(action, raw);
     var countable = hasExplicitQuantity || actionType === "threat" || actionType === "tactical_move";
 
     var parsedResult = {
