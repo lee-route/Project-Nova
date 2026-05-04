@@ -1,6 +1,12 @@
 (function () {
   var engine = window.QuestSystem;
+  var lexicon = window.NpcLexicon || {};
   var executeScenario = engine && engine.executeScenario;
+  var KNOWN_ACTIONS = lexicon.knownActions || [];
+  var ACTION_PATTERNS = lexicon.actionPatterns || [];
+  var NON_COUNTABLE_PATTERNS = lexicon.nonCountablePatterns || [];
+  var CLASSIFY_KEYWORDS = lexicon.classifyKeywords || {};
+  var ACTION_NORMALIZE_MAP = lexicon.actionNormalizeMap || {};
 
   var form = document.querySelector("#control-form");
   var runButton = document.querySelector("#run-pipeline");
@@ -288,19 +294,18 @@
 
   function isCountableScenario(actionText, rawText) {
     var text = String(actionText || "") + " " + String(rawText || "");
-    var nonCountablePatterns = [/기침/, /아프/, /피곤/, /바빠/, /컨디션/, /소문/, /긴장/, /초조/, /같다/, /보인다/];
-    for (var i = 0; i < nonCountablePatterns.length; i += 1) {
-      if (nonCountablePatterns[i].test(text)) return false;
+    for (var i = 0; i < NON_COUNTABLE_PATTERNS.length; i += 1) {
+      if (NON_COUNTABLE_PATTERNS[i].test(text)) return false;
     }
     return true;
   }
 
   function classifyActionType(actionText, rawText) {
     var text = (String(actionText || "") + " " + String(rawText || "")).toLowerCase();
-    if (/(독살|암살|살해|공격|습격|납치|피습)/.test(text)) return "threat";
-    if (/(정찰|침투|매복|집결|추적)/.test(text)) return "tactical_move";
-    if (/(먹|마시|자|취침|휴식|대화|일하|근무|장사|요리|청소|정리|산책|준비|수리)/.test(text)) return "routine";
-    if (/(바쁘|피곤|아프|기침|긴장|초조|불안)/.test(text)) return "state";
+    if (CLASSIFY_KEYWORDS.threat && CLASSIFY_KEYWORDS.threat.test(text)) return "threat";
+    if (CLASSIFY_KEYWORDS.tactical_move && CLASSIFY_KEYWORDS.tactical_move.test(text)) return "tactical_move";
+    if (CLASSIFY_KEYWORDS.routine && CLASSIFY_KEYWORDS.routine.test(text)) return "routine";
+    if (CLASSIFY_KEYWORDS.state && CLASSIFY_KEYWORDS.state.test(text)) return "state";
     return "unknown";
   }
 
@@ -315,23 +320,8 @@
   }
 
   function normalizeActionToken(action) {
-    var map = {
-      이동: "이동",
-      move: "이동",
-      attack: "공격",
-      공격: "공격",
-      gather: "집결",
-      집결: "집결",
-      talk: "대화",
-      대화: "대화",
-      observe: "정찰",
-      정찰: "정찰",
-      travel: "이동",
-      탈출: "탈출",
-      escape: "탈출",
-    };
     var token = String(action || "").toLowerCase();
-    return map[token] || action || "";
+    return ACTION_NORMALIZE_MAP[token] || action || "";
   }
 
   function parseScenarioText(scenarioText) {
@@ -398,66 +388,15 @@
       sentenceBody = topicPrefix[3].trim();
     }
 
-    var knownActions = [
-      "move",
-      "attack",
-      "gather",
-      "talk",
-      "observe",
-      "travel",
-      "escape",
-      "이동",
-      "공격",
-      "집결",
-      "대화",
-      "정찰",
-      "탈출",
-      "독살",
-      "암살",
-      "살해",
-      "기침",
-      "먹",
-      "먹었다",
-      "마셨",
-      "잤",
-      "일했",
-      "장사",
-      "요리",
-      "청소",
-      "준비",
-      "수리",
-      "정리",
-    ];
     var actionToken = "";
-    var actionPatterns = [
-      { regex: /탈출(했|한|하는|중)/, value: "탈출" },
-      { regex: /이동(했|한|하는|중)/, value: "이동" },
-      { regex: /공격(했|한|하는|중)/, value: "공격" },
-      { regex: /정찰(했|한|하는|중)/, value: "정찰" },
-      { regex: /집결(했|한|하는|중)/, value: "집결" },
-      { regex: /독살/, value: "독살당했다" },
-      { regex: /암살/, value: "암살당했다" },
-      { regex: /살해/, value: "살해되었다" },
-      { regex: /바빠보인|바쁘다/, value: "바빠 보인다" },
-      { regex: /피곤해보인|피곤하다/, value: "피곤해 보인다" },
-      { regex: /기침/, value: "기침을 많이 했다" },
-      { regex: /밥을?\s*먹/, value: "밥을 먹었다" },
-      { regex: /식사(를)?\s*했/, value: "식사했다" },
-      { regex: /음식(을)?\s*먹/, value: "음식을 먹었다" },
-      { regex: /마셨|마시/, value: "무언가를 마셨다" },
-      { regex: /잠을?\s*잤|취침/, value: "잠을 잤다" },
-      { regex: /일했|근무/, value: "일을 했다" },
-      { regex: /장사/, value: "장사를 했다" },
-      { regex: /요리/, value: "요리를 했다" },
-    ];
-    for (var p = 0; p < actionPatterns.length; p += 1) {
-      if (actionPatterns[p].regex.test(raw)) {
-        actionToken = actionPatterns[p].value;
+    for (var p = 0; p < ACTION_PATTERNS.length; p += 1) {
+      if (ACTION_PATTERNS[p].regex.test(raw)) {
+        actionToken = ACTION_PATTERNS[p].value;
         break;
       }
     }
     for (var j = 0; j < tokens.length; j += 1) {
-      if (knownActions.indexOf(String(tokens[j]).toLowerCase()) >= 0) {
+      if (KNOWN_ACTIONS.indexOf(String(tokens[j]).toLowerCase()) >= 0) {
         actionToken = tokens[j];
         break;
       }
