@@ -51,6 +51,10 @@ h1 {
   gap: 10px;
 }
 
+.controls .full-width {
+  grid-column: 1 / -1;
+}
+
 label {
   display: flex;
   flex-direction: column;

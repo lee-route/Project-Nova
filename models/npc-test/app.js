@@ -7,6 +7,8 @@
   var NON_COUNTABLE_PATTERNS = lexicon.nonCountablePatterns || [];
   var CLASSIFY_KEYWORDS = lexicon.classifyKeywords || {};
   var ACTION_NORMALIZE_MAP = lexicon.actionNormalizeMap || {};
+  var WORLD_PLACES = lexicon.worldPlaces || [];
+  var WORLD_ROLES = lexicon.worldRoles || [];
 
   var form = document.querySelector("#control-form");
   var runButton = document.querySelector("#run-pipeline");
@@ -16,8 +18,13 @@
   var outputKb = document.querySelector("#out-kb");
   var outputDialogue = document.querySelector("#out-dialogue");
   var outputDialogueMain = document.querySelector("#out-dialogue-main");
+  var outputParsePipeline = document.querySelector("#out-parse-pipeline");
+  var outputFacts = document.querySelector("#out-facts");
+  var outputEngineData = document.querySelector("#out-engine-data");
+  var outputTestResults = document.querySelector("#out-test-results");
   var debugLog = document.querySelector("#debug-log");
   var clickIndicator = document.querySelector("#click-indicator");
+  var runTestsButton = document.querySelector("#run-parser-tests");
 
   function appendDebug(message) {
     var line = "[" + new Date().toLocaleTimeString() + "] " + message;
@@ -64,6 +71,7 @@
       receiverCredulity: getFieldValue("receiverCredulity"),
       receiverTrust: getFieldValue("receiverTrust"),
       trustLevel: getFieldValue("trustLevel"),
+      subjectReputation: getFieldValue("subjectReputation"),
     };
     try {
       localStorage.setItem("npc-test-form-state", JSON.stringify(payload));
@@ -92,34 +100,96 @@
     }
   }
 
+  function buildFactsFromParsed(parsed) {
+    var list = parsed.sentenceParses && parsed.sentenceParses.length ? parsed.sentenceParses : [parsed];
+    var facts = [];
+    for (var i = 0; i < list.length; i += 1) {
+      var f = list[i];
+      facts.push({
+        fact_id: "F" + String(i + 1).padStart(2, "0"),
+        subject: sanitizeKoreanNoun(f.subject || "대상"),
+        action: normalizeActionPhrase(f.action || ""),
+        target: sanitizeKoreanNoun(f.target || "현장"),
+        quantity: Number(f.quantity || 1),
+        certainty: Number(f.certainty || 0.75),
+        is_countable: Boolean(f.is_countable),
+        action_type: f.action_type || "unknown",
+        parse_confidence: Number(f.parse_confidence || 0.5),
+        parse_mode: f.parse_mode || "structured",
+        raw_text: f.raw_text || "",
+        rumor: /(소문|전해|듣|카더라)/.test(String(f.raw_text || "")),
+      });
+    }
+    return facts;
+  }
+
+  function buildParsePipelineTrace(parsed, primaryFact, facts) {
+    var lines = [];
+    lines.push("=== Parse Pipeline ===");
+    lines.push("raw: " + (parsed.raw_text || ""));
+    lines.push("mode: " + parsed.parse_mode + ", confidence: " + parsed.parse_confidence);
+    lines.push("sentences: " + (parsed.sentenceParses ? parsed.sentenceParses.length : 1));
+    for (var i = 0; i < (parsed.sentenceParses || []).length; i += 1) {
+      var s = parsed.sentenceParses[i];
+      lines.push(
+        "  [" +
+          (i + 1) +
+          "] " +
+          (s.raw_text || "") +
+          " -> " +
+          s.subject +
+          " / " +
+          s.action +
+          " / " +
+          s.target +
+          " (" +
+          s.action_type +
+          ")"
+      );
+    }
+    lines.push("primary: " + primaryFact.subject + " | " + primaryFact.action + " | " + primaryFact.target);
+    lines.push("facts count: " + facts.length);
+    return lines.join("\n");
+  }
+
   function buildReadableDialogue(result) {
     if (result.propagation.blocked) {
       return "정보 전파 차단: " + result.propagation.reason;
     }
-    var d = result.propagation.receiverInterpreted.truth_value;
-    var source = result.propagation.receiverInterpreted.metadata.source;
-    var actionText = normalizeActionPhrase(String(d.action || ""));
-    var naturalAction = /(다|했다|중이다|보인다|상태다)$/.test(actionText) ? actionText : actionText + "했다";
-    var subjectText = sanitizeKoreanNoun(String(d.subject || "대상"));
-    var targetText = sanitizeKoreanNoun(String(d.target || "알 수 없는 장소"));
-    var quantityText = d.is_countable ? String(d.quantity) : "해당 없음";
-    return (
-      subjectText +
-      pickKoreanParticle(subjectText, "이", "가") +
-      " " +
-      naturalAction +
-      ". " +
-      "상황 맥락: " +
-      targetText +
-      ", 수량: " +
-      quantityText +
-      ", 확신도: " +
-      d.certainty +
-      " (" +
-      source +
-      pickKoreanParticle(String(source || ""), "의", "의") +
-      " 정보)"
-    );
+    var interpreted = result.propagation.interpretedFacts || [];
+    if (!interpreted.length && result.propagation.receiverInterpreted) {
+      interpreted = [result.propagation.receiverInterpreted];
+    }
+    var lines = [];
+    for (var i = 0; i < interpreted.length; i += 1) {
+      var item = interpreted[i];
+      var d = item.truth_value;
+      var source = item.metadata.source;
+      var subjectText = sanitizeKoreanNoun(String(d.subject || "대상"));
+      var actionText = normalizeActionPhrase(String(d.action || ""));
+      var naturalAction = /(다|했다|중이다|보인다|상태다)$/.test(actionText) ? actionText : actionText + "했다";
+      var targetText = sanitizeKoreanNoun(String(d.target || "현장"));
+      var quantityText = d.is_countable ? String(d.quantity) : "해당 없음";
+      lines.push(
+        "[" +
+          (item.info_id || "F" + (i + 1)) +
+          "] " +
+          subjectText +
+          pickKoreanParticle(subjectText, "이", "가") +
+          " " +
+          naturalAction +
+          ". 상황 맥락: " +
+          targetText +
+          ", 수량: " +
+          quantityText +
+          ", 확신도: " +
+          d.certainty +
+          " (" +
+          source +
+          ")"
+      );
+    }
+    return lines.join("\n");
   }
 
   function pickKoreanParticle(word, withBatchim, withoutBatchim) {
@@ -208,6 +278,7 @@
     if (list.length === 1) {
       var only = list[0];
       only.sentenceParses = [JSON.parse(JSON.stringify(only))];
+      only.facts = buildFactsFromParsed(only);
       return only;
     }
 
@@ -302,12 +373,25 @@
       merged.target = "복합 입력";
     }
 
+    merged.facts = buildFactsFromParsed(merged);
     return merged;
   }
 
   function detectUncertainty(rawText) {
     var text = String(rawText || "");
-    var lowCertaintyPatterns = [/같다/, /같아/, /추정/, /아마/, /듯/, /처럼 보/];
+    var lowCertaintyPatterns = [
+      /같다/,
+      /같아/,
+      /추정/,
+      /아마/,
+      /듯/,
+      /처럼 보/,
+      /소문/,
+      /카더라/,
+      /전해/,
+      /뿐/,
+      /인 것 같/,
+    ];
     for (var i = 0; i < lowCertaintyPatterns.length; i += 1) {
       if (lowCertaintyPatterns[i].test(text)) return 0.4;
     }
@@ -338,13 +422,22 @@
     return "unknown";
   }
 
-  function calculateParseConfidence(parsed) {
-    var score = 0.35;
-    if (parsed.subject && parsed.subject.length >= 2) score += 0.2;
-    if (parsed.action && parsed.action.length >= 2) score += 0.2;
-    if (parsed.action_type !== "unknown") score += 0.15;
-    if (parsed.target && parsed.target !== "알 수 없는 장소") score += 0.1;
-    if (parsed.has_explicit_quantity) score += 0.1;
+  function calculateParseConfidence(parsed, rawText) {
+    var score = 0.25;
+    var raw = String(rawText || parsed.raw_text || "");
+    if (parsed.subject && parsed.subject.length >= 2) score += 0.15;
+    if (parsed.action && parsed.action.length >= 2) score += 0.15;
+    if (parsed.action_type !== "unknown") score += 0.12;
+    if (parsed.target && parsed.target !== "알 수 없는 장소" && parsed.target !== "현장") score += 0.1;
+    if (parsed.has_explicit_quantity) score += 0.08;
+    if (parsed.parse_mode === "structured") score += 0.1;
+    for (var p = 0; p < ACTION_PATTERNS.length; p += 1) {
+      if (ACTION_PATTERNS[p].regex.test(raw)) {
+        score += 0.05;
+        break;
+      }
+    }
+    if (hasNegationCue(raw)) score += 0.05;
     return Math.max(0.05, Math.min(0.98, Number(score.toFixed(2))));
   }
 
@@ -410,6 +503,15 @@
     };
   }
 
+  function isLikelyPlace(text) {
+    var t = sanitizeKoreanNoun(text);
+    if (!t) return false;
+    for (var i = 0; i < WORLD_PLACES.length; i += 1) {
+      if (t === WORLD_PLACES[i] || t.indexOf(WORLD_PLACES[i]) >= 0) return true;
+    }
+    return !/(이|가|은|는)$/.test(t);
+  }
+
   function extractSubjectPredicate(sentenceBody) {
     var m = String(sentenceBody || "").match(/^(.+?)(?:이|가|은|는)\s+(.+)$/);
     if (!m) return null;
@@ -419,7 +521,30 @@
     };
   }
 
+  function parseReputationMap(raw) {
+    var text = String(raw || "").trim();
+    if (!text) return null;
+    try {
+      var parsed = JSON.parse(text);
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function findWorldPlaceInText(rawText) {
+    var text = String(rawText || "");
+    for (var i = 0; i < WORLD_PLACES.length; i += 1) {
+      var place = WORLD_PLACES[i];
+      if (place && text.indexOf(place) >= 0) return sanitizeKoreanNoun(place);
+    }
+    return "";
+  }
+
   function extractObjectTargetFromRaw(rawText) {
+    var fromWorld = findWorldPlaceInText(rawText);
+    if (fromWorld) return fromWorld;
+
     var lexicalEulWords = {
       마을: true,
       가을: true,
@@ -467,9 +592,15 @@
     return parsed;
   }
 
+  var OBSERVATION_SUBJECTS = {
+    "공격 징후": true,
+    "이상 징후": true,
+  };
+
   function looksLikeClause(text) {
     var t = String(text || "");
     if (!t) return false;
+    if (OBSERVATION_SUBJECTS[t]) return false;
     if (/(했|한다|했다|당했|당했다|중이다|상태다|보인다|빠졌|시도했|계획|징후|미발생)/.test(t)) return true;
     if (/\s+(고|며|는데|지만)\s+/.test(t)) return true;
     return false;
@@ -487,12 +618,33 @@
       target === parsed.subject ||
       target.length === 1 ||
       looksLikeClause(target) ||
+      /^(아마|소문|오늘|어제|방금|지금)/.test(target) ||
       (parsed.action && target && parsed.action.indexOf(target) >= 0);
 
     if (invalidTarget) {
       target = sanitizeKoreanNoun(fallbackTarget || "현장");
     }
     parsed.target = target || "현장";
+
+    if (parsed.subject && /(에서|에\s|으로\s)/.test(parsed.subject)) {
+      var fixPlace = parsed.subject.match(/^(.+?)(?:에서|에|으로)\s+(.+)$/);
+      if (fixPlace && fixPlace[1] && fixPlace[2]) {
+        parsed.target = sanitizeKoreanNoun(fixPlace[1]);
+        parsed.subject = sanitizeKoreanNoun(fixPlace[2]);
+      }
+    }
+    if (parsed.subject && /(따르|소문|카더라)/.test(parsed.subject)) {
+      parsed.parse_confidence = Math.min(Number(parsed.parse_confidence || 0.5), 0.55);
+      parsed.parse_mode = "conservative_raw";
+    }
+    if (parsed.action_type === "unknown" && Number(parsed.parse_confidence || 0) > 0.6) {
+      parsed.parse_confidence = 0.55;
+      parsed.parse_mode = "conservative_raw";
+    }
+    if (Number(parsed.certainty || 1) <= 0.5) {
+      parsed.parse_confidence = Math.min(Number(parsed.parse_confidence || 0.5), 0.55);
+      parsed.parse_mode = "conservative_raw";
+    }
     return parsed;
   }
 
@@ -554,11 +706,151 @@
     return mergeParsedSentences(perSentence);
   }
 
+  function stripLeadingQualifiers(text) {
+    var t = normalizeUserText(text);
+    var rumorPrefix = t.match(/^(소문에 따르면|전해 들으니|카더라|듣자하니)\s+(.+)$/);
+    if (rumorPrefix && rumorPrefix[2]) t = rumorPrefix[2].trim();
+    var timePrefix = t.match(/^(오늘|어제|방금|지금|요즘|아마)(?:은|는)?\s+(.+)$/);
+    if (timePrefix && timePrefix[2]) t = timePrefix[2].trim();
+    return t;
+  }
+
+  function trySubjectPlacePredicateParse(raw, compact) {
+    var m = compact.match(/^(.+?)(?:이|가|은|는)\s+(.+?)(?:에서|에|으로)\s+(.+)$/);
+    if (!m) return null;
+    var subjectText = sanitizeKoreanNoun(m[1]);
+    var locationText = sanitizeKoreanNoun(m[2]);
+    var predicateText = normalizeUserText(m[3]);
+    if (!isLikelyPlace(locationText)) return null;
+    var actionHit = extractActionFromText(predicateText + " " + raw, predicateText.split(/\s+/).filter(Boolean));
+    var actionText = normalizeActionPhrase(actionHit.token || predicateText);
+    var parsed = {
+      subject: subjectText,
+      quantity: 1,
+      action: actionText,
+      target: locationText,
+      certainty: detectUncertainty(raw),
+      is_countable: false,
+      action_type: actionHit.category || classifyActionType(actionText, raw),
+      raw_text: raw,
+      has_explicit_quantity: false,
+      parse_confidence: 0.9,
+      parse_mode: "structured",
+    };
+    parsed = applyNegationRule(parsed, raw);
+    return normalizeParsedSlots(parsed, locationText);
+  }
+
+  function trySubjectLocationActionParse(raw, compact) {
+    var m = compact.match(/^(.+?)(?:이|가|은|는)\s+(.+?)(?:에서|에|으로)\s+(.+)$/);
+    if (!m) return null;
+    var subjectText = sanitizeKoreanNoun(m[1]);
+    var locationText = sanitizeKoreanNoun(m[2]);
+    var predicateText = normalizeUserText(m[3]);
+    var actionHit = extractActionFromText(predicateText + " " + raw, predicateText.split(/\s+/).filter(Boolean));
+    var actionText = normalizeActionPhrase(actionHit.token || predicateText);
+    var actionType = actionHit.category || classifyActionType(actionText, raw);
+    var qtyInfo = extractQuantityInfo(compact);
+    var parsed = {
+      subject: subjectText,
+      quantity: qtyInfo.has ? qtyInfo.value : 1,
+      action: actionText,
+      target: locationText || "현장",
+      certainty: detectUncertainty(raw),
+      is_countable: qtyInfo.has && isCountableScenario(actionText, raw),
+      action_type: actionType,
+      raw_text: raw,
+      has_explicit_quantity: qtyInfo.has,
+      parse_confidence: 0.88,
+      parse_mode: "structured",
+    };
+    parsed = applyNegationRule(parsed, raw);
+    return normalizeParsedSlots(parsed, locationText || "현장");
+  }
+
+  function tryPlaceSubjectPredicateParse(raw, compact) {
+    var placeSubject = compact.match(/^(.+?)(?:에서|에|으로)\s+(.+?)(?:이|가|은|는)\s+(.+)$/);
+    if (!placeSubject) return null;
+    if (!isLikelyPlace(sanitizeKoreanNoun(placeSubject[1]))) return null;
+    var locationText = sanitizeKoreanNoun(placeSubject[1]);
+    var subjectText = sanitizeKoreanNoun(placeSubject[2]);
+    var predicateText = normalizeUserText(placeSubject[3]);
+    var actionHit = extractActionFromText(predicateText + " " + raw, predicateText.split(/\s+/).filter(Boolean));
+    var actionText = normalizeActionPhrase(actionHit.token || predicateText);
+    var locInPredicate = predicateText.match(/^(.+?)(?:에|에서|으로)\s+(.+)$/);
+    if (locInPredicate && locInPredicate[1] && locInPredicate[2]) {
+      locationText = sanitizeKoreanNoun(locInPredicate[1]);
+      actionText = normalizeActionPhrase(locInPredicate[2]);
+    }
+    var actionType = actionHit.category || classifyActionType(actionText, raw);
+    var qtyInfo = extractQuantityInfo(compact);
+    var parsed = {
+      subject: subjectText,
+      quantity: qtyInfo.has ? qtyInfo.value : 1,
+      action: actionText,
+      target: locationText || "현장",
+      certainty: detectUncertainty(raw),
+      is_countable: qtyInfo.has && isCountableScenario(actionText, raw),
+      action_type: actionType,
+      raw_text: raw,
+      has_explicit_quantity: qtyInfo.has,
+      parse_confidence: 0.88,
+      parse_mode: "structured",
+    };
+    parsed = applyNegationRule(parsed, raw);
+    return normalizeParsedSlots(parsed, locationText || "현장");
+  }
+
+  function tryPossessiveCountParse(raw, compact) {
+    var m = compact.match(
+      /^(.+?\s*(?:\d+|한|하나|두|둘|세|셋|네|넷|다섯|여섯|일곱|여덟|아홉|열|스무|스물|서른|마흔|쉰|예순|일흔|여든|아흔)\s*마리(?:의)?)\s+(.+?)(?:이|가|은|는)\s+(.+)$/
+    );
+    if (!m) return null;
+    var countPart = m[1];
+    var qtyInfo = extractQuantityInfo(countPart);
+    var subjectText = sanitizeKoreanNoun(m[2]);
+    var predicateText = normalizeUserText(m[3]);
+    var actionHit = extractActionFromText(predicateText, predicateText.split(/\s+/).filter(Boolean));
+    var actionText = normalizeActionPhrase(actionHit.token || predicateText);
+    var place = findWorldPlaceInText(raw) || "현장";
+    var locInPred = predicateText.match(/^(.+?)(?:에서|에|으로)\s+(.+)$/);
+    if (locInPred) {
+      place = sanitizeKoreanNoun(locInPred[1]);
+      actionText = normalizeActionPhrase(locInPred[2]);
+    }
+    var parsed = {
+      subject: subjectText,
+      quantity: qtyInfo.has ? qtyInfo.value : 1,
+      action: actionText,
+      target: place,
+      certainty: detectUncertainty(raw),
+      is_countable: true,
+      action_type: actionHit.category || classifyActionType(actionText, raw),
+      raw_text: raw,
+      has_explicit_quantity: true,
+      parse_confidence: 0.9,
+      parse_mode: "structured",
+    };
+    return normalizeParsedSlots(parsed, place);
+  }
+
   function parseSingleSentence(sentenceText) {
     var raw = normalizeUserText(sentenceText);
     if (!raw) return null;
+    raw = stripLeadingQualifiers(raw);
 
     var compact = raw.replace(/[,.!?]/g, " ");
+    var subjectPlaceParsed = trySubjectPlacePredicateParse(raw, compact);
+    if (subjectPlaceParsed) return subjectPlaceParsed;
+
+    var placeParsed = tryPlaceSubjectPredicateParse(raw, compact);
+    if (placeParsed) return placeParsed;
+
+    var subjectLocParsed = trySubjectLocationActionParse(raw, compact);
+    if (subjectLocParsed) return subjectLocParsed;
+
+    var possessiveParsed = tryPossessiveCountParse(raw, compact);
+    if (possessiveParsed) return possessiveParsed;
     var tokens = compact.split(/\s+/).filter(Boolean);
     var structuredCountPattern = compact.match(
       /^(.+?)(?:에서|에|으로)\s+(.+?)\s+(\d+|한|하나|두|둘|세|셋|네|넷|다섯|여섯|일곱|여덟|아홉|열|열한|열두|열세|열네|열다섯|열여섯|열일곱|열여덟|열아홉|스무|스물|서른|마흔|쉰|예순|일흔|여든|아흔)\s*(마리|명|개|척|대|건|통)?(?:가|이|는|은)?\s+(.+)$/
@@ -595,11 +887,15 @@
       var subjectCountAction = extractActionFromText(subjectCountPattern[4], subjectCountPattern[4].split(/\s+/).filter(Boolean));
       var normalizedSubjectCountAction = normalizeActionToken(subjectCountAction.token);
       var subjectCountText = parseCountToken(subjectCountPattern[2]);
+      var subjectRaw = sanitizeKoreanNoun(subjectCountPattern[1]);
+      var placeInSubject = subjectRaw.match(/^(.+?)(?:에서|에|으로)\s+(.+)$/);
+      var subjectForCount = placeInSubject ? sanitizeKoreanNoun(placeInSubject[2]) : subjectRaw;
+      var targetFromSubject = placeInSubject ? sanitizeKoreanNoun(placeInSubject[1]) : findWorldPlaceInText(raw);
       var subjectCountParsed = {
-        subject: sanitizeKoreanNoun(subjectCountPattern[1]),
+        subject: subjectForCount,
         quantity: subjectCountText != null ? subjectCountText : 1,
         action: normalizedSubjectCountAction || normalizeUserText(subjectCountPattern[4]),
-        target: "현장",
+        target: targetFromSubject || "현장",
         certainty: detectUncertainty(raw),
         is_countable: true,
         action_type: subjectCountAction.category || classifyActionType(subjectCountPattern[4], raw),
@@ -609,7 +905,7 @@
       subjectCountParsed.parse_confidence = 0.88;
       subjectCountParsed.parse_mode = "structured";
       subjectCountParsed = applyNegationRule(subjectCountParsed, raw);
-      return normalizeParsedSlots(subjectCountParsed, "현장");
+      return normalizeParsedSlots(subjectCountParsed, targetFromSubject || "현장");
     }
     var quantityInfo = extractQuantityInfo(compact);
     var hasExplicitQuantity = quantityInfo.has;
@@ -617,11 +913,6 @@
 
     var sentenceBody = raw;
     var timeContext = "";
-    var topicPrefix = raw.match(/^(오늘|어제|방금|지금|요즘)(은|는)?\s+(.+)/);
-    if (topicPrefix && topicPrefix[3]) {
-      timeContext = topicPrefix[1];
-      sentenceBody = topicPrefix[3].trim();
-    }
 
     var extractedAction = extractActionFromText(raw, tokens);
     var actionToken = extractedAction.token;
@@ -657,12 +948,12 @@
     if (subjectByParticle && subjectByParticle.predicate) {
       var predicate = subjectByParticle.predicate;
       // If predicate includes an explicit location clause ("...에서 ..."), split into target/action.
-      var locationPredicate = predicate.match(/^(.+?)에서\s+(.+)$/);
+      var locationPredicate = predicate.match(/^(.+?)(?:에서|에|으로)\s+(.+)$/);
       if (locationPredicate && locationPredicate[1] && locationPredicate[2]) {
         cleanedTarget = sanitizeKoreanNoun(locationPredicate[1]);
         action = normalizeActionPhrase(locationPredicate[2]);
         derivedFromPredicate = false;
-      } else if (!/^(이동|공격|정찰|집결|탈출|독살|암살|살해)/.test(predicate) && predicate.length > 0) {
+      } else if (!/^(이동|공격|정찰|집결|탈출|독살|암살|살해|불을)/.test(predicate) && predicate.length > 0) {
         action = normalizeActionPhrase(predicate.replace(/[.]$/g, ""));
         derivedFromPredicate = true;
       }
@@ -679,8 +970,16 @@
     ) {
       action = normalizeActionPhrase(normalizeActionToken(actionToken) || String(actionToken));
     }
-    if (action.indexOf("독살") >= 0 || action.indexOf("암살") >= 0 || action.indexOf("살해") >= 0) {
-      cleanedTarget = cleanedTarget || "궁정 내부";
+    if (
+      action.indexOf("독살") >= 0 ||
+      action.indexOf("암살") >= 0 ||
+      action.indexOf("살해") >= 0 ||
+      action.indexOf("불을") >= 0
+    ) {
+      if (!cleanedTarget || cleanedTarget === "일상 관찰" || cleanedTarget === "현장") {
+        var threatPlace = findWorldPlaceInText(raw);
+        cleanedTarget = threatPlace || cleanedTarget || "궁정 내부";
+      }
     }
     if (!cleanedTarget) {
       cleanedTarget = timeContext || "현장";
@@ -705,16 +1004,21 @@
       raw_text: raw,
       has_explicit_quantity: hasExplicitQuantity,
     };
-    parsedResult.parse_confidence = calculateParseConfidence(parsedResult);
+    parsedResult.parse_confidence = calculateParseConfidence(parsedResult, raw);
     parsedResult.parse_mode = parsedResult.parse_confidence < 0.6 ? "conservative_raw" : "structured";
+    if (/(있는 것 같|것 같다|들어온 것 같)/.test(raw)) {
+      parsedResult.parse_confidence = Math.min(parsedResult.parse_confidence, 0.55);
+      parsedResult.parse_mode = "conservative_raw";
+      parsedResult.certainty = detectUncertainty(raw);
+    }
     if (parsedResult.parse_mode === "conservative_raw") {
       parsedResult.action = sentenceBody;
       parsedResult.is_countable = false;
       parsedResult.quantity = 1;
-      parsedResult.target = timeContext || "원문 서술";
+      parsedResult.target = findWorldPlaceInText(raw) || "원문 서술";
     }
     parsedResult = applyNegationRule(parsedResult, raw);
-    return normalizeParsedSlots(parsedResult, timeContext || "현장");
+    return normalizeParsedSlots(parsedResult, findWorldPlaceInText(raw) || "현장");
   }
 
   function render() {
@@ -744,10 +1048,25 @@
       var primaryFact = selectPrimaryParse(scenarioParsed) || scenarioParsed;
       appendDebug("primary fact: " + (primaryFact.action_type || "unknown") + " / " + String(primaryFact.action || ""));
 
+      var facts = scenarioParsed.facts && scenarioParsed.facts.length
+        ? scenarioParsed.facts
+        : buildFactsFromParsed(scenarioParsed);
+      var reputationMap = parseReputationMap(formData.get("subjectReputation"));
+
+      if (outputParsePipeline) {
+        outputParsePipeline.textContent = buildParsePipelineTrace(scenarioParsed, primaryFact, facts);
+      }
+      if (outputFacts) {
+        outputFacts.textContent = formatJSON(facts);
+      }
+
       var result = executeScenario({
         trustLevel: trustLevel,
         senderStats: senderStats,
         receiverStats: receiverStats,
+        facts: facts,
+        senderReputation: reputationMap,
+        receiverReputation: reputationMap,
         infoTruthValue: {
           subject: primaryFact.subject,
           action: primaryFact.action,
@@ -762,20 +1081,28 @@
       });
 
       outputBase.textContent = formatJSON(result.baseInfo);
-      outputSender.textContent = formatJSON(result.propagation.senderDistorted);
-      outputReceiver.textContent = formatJSON(result.propagation.receiverInterpreted);
+      outputSender.textContent = formatJSON(
+        result.propagation.distortedFacts || result.propagation.senderDistorted
+      );
+      outputReceiver.textContent = formatJSON(
+        result.propagation.interpretedFacts || result.propagation.receiverInterpreted
+      );
       outputKb.textContent = formatJSON(result.knowledgeBaseSnapshot);
       outputDialogueMain.value = buildReadableDialogue(result);
       saveFormState();
-      appendDebug("pipeline executed");
+      appendDebug("pipeline executed, facts=" + facts.length);
 
       if (result.propagation.blocked) {
         appendDebug("propagation blocked: " + result.propagation.reason);
         outputDialogue.textContent = "정보가 전달되지 않아 대화가 생성되지 않았습니다.";
+        if (outputEngineData) outputEngineData.textContent = "";
         return;
       }
 
-      outputDialogue.textContent = result.dialogue.finalSpeech;
+      if (outputEngineData && result.dialogue) {
+        outputEngineData.textContent = formatJSON(result.dialogue.engineData || {});
+      }
+      outputDialogue.textContent = result.dialogue ? result.dialogue.finalSpeech : "";
       appendDebug("dialogue rendered");
     } catch (error) {
       var message = (error && error.message) ? error.message : String(error);
@@ -815,7 +1142,20 @@
     });
   }
 
-  restoreFormState();
-  initCollapsiblePanels();
-  render();
+  window.NpcParser = {
+    parseScenarioText: parseScenarioText,
+    parseSingleSentence: parseSingleSentence,
+    splitIntoSentences: splitIntoSentences,
+    buildFactsFromParsed: buildFactsFromParsed,
+    mergeParsedSentences: mergeParsedSentences,
+    selectPrimaryParse: selectPrimaryParse,
+    buildParsePipelineTrace: buildParsePipelineTrace,
+    classifyActionType: classifyActionType,
+  };
+
+  if (form && runButton) {
+    restoreFormState();
+    initCollapsiblePanels();
+    render();
+  }
 })();
