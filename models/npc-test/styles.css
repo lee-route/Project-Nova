@@ -55,6 +55,26 @@ h1 {
   grid-column: 1 / -1;
 }
 
+.controls .checkbox-label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.controls .checkbox-label input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+select {
+  width: 100%;
+  background: #0f1219;
+  color: #ebedf3;
+  border: 1px solid #313c52;
+  border-radius: 6px;
+  padding: 7px 8px;
+}
+
 label {
   display: flex;
   flex-direction: column;

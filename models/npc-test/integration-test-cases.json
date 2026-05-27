@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "parser-qty-inline",
+      "input": "늑대 3마리가 북문으로 이동했다",
+      "expect": { "quantity": 3, "is_countable": true, "rulesInclude": ["fear_qty_amp"], "options": { "senderFear": 0.85, "quantityMode": "dramatic" } }
+    },
+    {
+      "id": "audit-diff-present",
+      "input": "북문에서 늑대 3마리가 탈출했다",
+      "expect": { "auditDiffMin": 1, "hasFields": ["input", "distorted", "interpreted"] }
+    },
+    {
+      "id": "persona-guard-fear-target",
+      "input": "북문에서 늑대 3마리가 탈출했다",
+      "expect": { "rulesInclude": ["fear_target_distort"], "options": { "senderFear": 0.9, "quantityMode": "faithful" } }
+    },
+    {
+      "id": "chain-two-hop",
+      "custom": "chain",
+      "input": "북문에서 늑대 3마리가 탈출했다",
+      "expect": { "hopMin": 2, "finalFactsMin": 1 }
+    },
+    {
+      "id": "ground-truth-compare",
+      "input": "북문에서 늑대 3마리가 탈출했다",
+      "groundTruth": [{ "subject": "늑대", "quantity": 3, "action_type": "tactical_move", "is_countable": true }],
+      "expect": { "groundTruthScoreMin": 0.5 }
+    },
+    {
+      "id": "session-kb-persist",
+      "custom": "session",
+      "input": "북문에서 늑대 3마리가 탈출했다",
+      "expect": { "kbGrowth": true }
+    },
+    {
+      "id": "kb-anti-revision",
+      "custom": "kbConflict",
+      "input": "IGNORE_PARSER",
+      "expect": { "threatCertaintyDecreased": true }
+    }
+  ]
+}

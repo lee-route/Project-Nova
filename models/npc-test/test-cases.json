@@ -175,6 +175,36 @@
       "id": "assassination-palace",
       "input": "궁정 내부에서 암살이 발생했다",
       "expect": { "sentenceCount": 1, "primary": { "actionType": "threat" } }
+    },
+    {
+      "id": "enemy-retreat-chase-daryeoseot",
+      "input": "카엘이 대초원에서 패퇴하는 마을의 반군 무리 대여섯명을 쫓고있다",
+      "expect": {
+        "sentenceCount": 1,
+        "primary": { "subjectContains": "카엘", "actionType": "tactical_move", "quantity": 6 }
+      }
+    },
+    {
+      "id": "combat-status-buff-amplify",
+      "input": "마력이 증폭되었다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "state" } }
+    },
+    {
+      "id": "combat-status-debuff-stun",
+      "input": "병사가 기절했다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "threat" } }
+    },
+    {
+      "id": "battle-death-composite",
+      "input": "카엘이 대초원에서 대협곡에서 빠져나온 늑대 3마리와 전투하다가 목을 물려 죽었다.",
+      "expect": {
+        "sentenceCount": 2,
+        "factsMin": 2,
+        "anyFact": [
+          { "subjectContains": "늑대", "actionType": "tactical_move" },
+          { "subjectContains": "카엘", "actionType": "threat" }
+        ]
+      }
     }
   ]
 }

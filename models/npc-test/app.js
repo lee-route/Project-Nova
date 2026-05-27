@@ -22,6 +22,12 @@
   var outputFacts = document.querySelector("#out-facts");
   var outputEngineData = document.querySelector("#out-engine-data");
   var outputTestResults = document.querySelector("#out-test-results");
+  var outputAudit = document.querySelector("#out-audit");
+  var outputAuditDiff = document.querySelector("#out-audit-diff");
+  var outputGroundTruth = document.querySelector("#out-ground-truth");
+  var outputChain = document.querySelector("#out-chain");
+  var outputDistortionTests = document.querySelector("#out-distortion-tests");
+  var outputIntegrationTests = document.querySelector("#out-integration-tests");
   var debugLog = document.querySelector("#debug-log");
   var clickIndicator = document.querySelector("#click-indicator");
   var runTestsButton = document.querySelector("#run-parser-tests");
@@ -72,6 +78,13 @@
       receiverTrust: getFieldValue("receiverTrust"),
       trustLevel: getFieldValue("trustLevel"),
       subjectReputation: getFieldValue("subjectReputation"),
+      senderReputation: getFieldValue("senderReputation"),
+      receiverReputation: getFieldValue("receiverReputation"),
+      quantityMode: getFieldValue("quantityMode"),
+      allowPartialTrust: getFieldValue("allowPartialTrust"),
+      persistSession: getFieldValue("persistSession"),
+      runChain: getFieldValue("runChain"),
+      groundTruthJson: getFieldValue("groundTruthJson"),
     };
     try {
       localStorage.setItem("npc-test-form-state", JSON.stringify(payload));
@@ -100,15 +113,21 @@
     }
   }
 
+  function detectRumorText(text) {
+    return /(소문|전해|듣|카더라|따르면|듣자하니)/.test(String(text || ""));
+  }
+
   function buildFactsFromParsed(parsed) {
     var list = parsed.sentenceParses && parsed.sentenceParses.length ? parsed.sentenceParses : [parsed];
     var facts = [];
     for (var i = 0; i < list.length; i += 1) {
       var f = list[i];
+      var sourceText = f.source_text || parsed.source_text || f.raw_text || "";
       facts.push({
         fact_id: "F" + String(i + 1).padStart(2, "0"),
         subject: sanitizeKoreanNoun(f.subject || "대상"),
         action: normalizeActionPhrase(f.action || ""),
+        object: sanitizeKoreanNoun(f.object || ""),
         target: sanitizeKoreanNoun(f.target || "현장"),
         quantity: Number(f.quantity || 1),
         certainty: Number(f.certainty || 0.75),
@@ -117,7 +136,8 @@
         parse_confidence: Number(f.parse_confidence || 0.5),
         parse_mode: f.parse_mode || "structured",
         raw_text: f.raw_text || "",
-        rumor: /(소문|전해|듣|카더라)/.test(String(f.raw_text || "")),
+        source_text: sourceText,
+        rumor: detectRumorText(sourceText),
       });
     }
     return facts;
@@ -142,12 +162,41 @@
           s.action +
           " / " +
           s.target +
+          (s.object ? " / object: " + s.object : "") +
           " (" +
           s.action_type +
           ")"
       );
     }
-    lines.push("primary: " + primaryFact.subject + " | " + primaryFact.action + " | " + primaryFact.target);
+    var primaryLine =
+      "primary: " + primaryFact.subject + " | " + primaryFact.action + " | " + primaryFact.target + (primaryFact.object ? " | object: " + primaryFact.object : "");
+    if (facts && facts.length > 1) {
+      var related = null;
+      for (var r = 0; r < facts.length; r += 1) {
+        var f = facts[r];
+        if (
+          f.subject !== primaryFact.subject &&
+          (f.action_type === "tactical_move" || f.action_type === "threat") &&
+          (f.is_countable || Number(f.quantity || 0) > 1)
+        ) {
+          related = f;
+          break;
+        }
+      }
+      if (related) {
+        primaryLine +=
+          " | linked: " +
+          related.subject +
+          " 수량 " +
+          String(related.quantity || 1) +
+          " (" +
+          related.action +
+          " @ " +
+          related.target +
+          ")";
+      }
+    }
+    lines.push(primaryLine);
     lines.push("facts count: " + facts.length);
     return lines.join("\n");
   }
@@ -521,6 +570,16 @@
     };
   }
 
+  function parseJsonField(raw) {
+    var text = String(raw || "").trim();
+    if (!text) return null;
+    try {
+      return JSON.parse(text);
+    } catch (error) {
+      return null;
+    }
+  }
+
   function parseReputationMap(raw) {
     var text = String(raw || "").trim();
     if (!text) return null;
@@ -662,11 +721,37 @@
   function extractActionFromText(text, tokens) {
     var actionToken = "";
     var actionCategory = "";
+    var t = String(text || "");
+
+    // Pick the best pattern with:
+    // 1) higher category priority (state > routine, etc.)
+    // 2) if tie, later appearance in the sentence.
+    var categoryScore = {
+      threat: 4,
+      tactical_move: 3,
+      state: 2,
+      routine: 1,
+      unknown: 0,
+    };
+    var bestIdx = -1;
+    var bestScore = -1;
     for (var p = 0; p < ACTION_PATTERNS.length; p += 1) {
-      if (ACTION_PATTERNS[p].regex.test(text)) {
+      var re = ACTION_PATTERNS[p].regex;
+      var idx = -1;
+      try {
+        idx = t.search(re);
+      } catch (e) {
+        idx = -1;
+      }
+      if (idx >= 0) {
+        var cat = ACTION_PATTERNS[p].category || "unknown";
+        var score = categoryScore[cat] != null ? categoryScore[cat] : 0;
+        if (score > bestScore || (score === bestScore && idx >= bestIdx)) {
         actionToken = ACTION_PATTERNS[p].value;
-        actionCategory = ACTION_PATTERNS[p].category || "";
-        break;
+          actionCategory = cat;
+          bestIdx = idx;
+          bestScore = score;
+        }
       }
     }
     if (!actionToken && tokens && tokens.length) {
@@ -694,16 +779,77 @@
       };
     }
 
+    var battleCompositeFacts = tryBattleDeathCompositeParse(full);
+    if (battleCompositeFacts && battleCompositeFacts.length) {
+      return mergeParsedSentences(battleCompositeFacts);
+    }
+
     var sentences = splitIntoSentences(full);
     var perSentence = [];
     for (var si = 0; si < sentences.length; si += 1) {
       var one = parseSingleSentence(sentences[si]);
-      if (one) perSentence.push(one);
+      if (one) {
+        one.source_text = sentences[si];
+        perSentence.push(one);
+      }
     }
     if (perSentence.length === 0) {
       return mergeParsedSentences([]);
     }
-    return mergeParsedSentences(perSentence);
+    var merged = mergeParsedSentences(perSentence);
+    merged.source_text = full;
+    return merged;
+  }
+
+  function tryBattleDeathCompositeParse(fullText) {
+    var raw = normalizeUserText(fullText);
+    if (!raw) return null;
+    var m = raw.match(
+      /^(.+?)이\s+(.+?)에서\s+(.+?)에서\s+빠져나온\s+(.+?)\s+(\d+|한|하나|두|둘|세|셋|네|넷|다섯|여섯|일곱|여덟|아홉|열|열한|열두|열세|열네|열다섯|열여섯|열일곱|열여덟|열아홉|스무|스물|서른|마흔|쉰|예순|일흔|여든|아흔)\s*마리와\s+전투하다가\s+(.+)$/
+    );
+    if (!m) return null;
+
+    var actor = sanitizeKoreanNoun(m[1]);
+    var battlePlace = sanitizeKoreanNoun(m[2]);
+    var escapePlace = sanitizeKoreanNoun(m[3]);
+    var enemy = sanitizeKoreanNoun(m[4]);
+    var qty = parseCountToken(m[5]);
+    var deathClause = normalizeActionPhrase(m[6]);
+
+    var fact1 = {
+      subject: enemy || "늑대",
+      quantity: qty != null ? qty : 1,
+      action: "탈출",
+      target: escapePlace || "현장",
+      certainty: detectUncertainty(raw),
+      is_countable: true,
+      action_type: "tactical_move",
+      raw_text: escapePlace + "에서 빠져나온 " + enemy + " " + (qty != null ? String(qty) : "1") + "마리",
+      has_explicit_quantity: true,
+      parse_confidence: 0.95,
+      parse_mode: "structured",
+      source_text: fullText,
+    };
+
+    var deathAction = deathClause;
+    if (!/(죽|사망|전사)/.test(deathAction)) {
+      deathAction = "전투 중 사망했다";
+    }
+    var fact2 = {
+      subject: actor || "대상",
+      quantity: 1,
+      action: normalizeActionPhrase(deathAction),
+      target: battlePlace || "현장",
+      certainty: detectUncertainty(raw),
+      is_countable: false,
+      action_type: "threat",
+      raw_text: actor + "이 " + battlePlace + "에서 전투하다가 " + deathClause,
+      has_explicit_quantity: false,
+      parse_confidence: 0.93,
+      parse_mode: "structured",
+      source_text: fullText,
+    };
+    return [fact1, fact2];
   }
 
   function stripLeadingQualifiers(text) {
@@ -724,16 +870,27 @@
     if (!isLikelyPlace(locationText)) return null;
     var actionHit = extractActionFromText(predicateText + " " + raw, predicateText.split(/\s+/).filter(Boolean));
     var actionText = normalizeActionPhrase(actionHit.token || predicateText);
+
+    // object(상대) 추출: 예) "... 반군 무리 ... 쫓고있다"
+    var objectText = "";
+    var enemyMatch = raw.match(/(반군\s*무리|반군|적병\s*무리|적병|도적\s*무리|도적|침입자\s*무리|침입자)/);
+    var pursuitCue = /(쫓|추격|추적)/.test(raw);
+    if (enemyMatch && pursuitCue) {
+      objectText = sanitizeKoreanNoun(enemyMatch[1]);
+    }
+
+    var qtyInfo = extractQuantityInfo(compact);
     var parsed = {
       subject: subjectText,
-      quantity: 1,
+      quantity: qtyInfo.has ? qtyInfo.value : 1,
       action: actionText,
       target: locationText,
       certainty: detectUncertainty(raw),
-      is_countable: false,
+      is_countable: qtyInfo.has && isCountableScenario(actionText, raw),
       action_type: actionHit.category || classifyActionType(actionText, raw),
       raw_text: raw,
-      has_explicit_quantity: false,
+      object: objectText || "",
+      has_explicit_quantity: qtyInfo.has,
       parse_confidence: 0.9,
       parse_mode: "structured",
     };
@@ -801,6 +958,40 @@
     return normalizeParsedSlots(parsed, locationText || "현장");
   }
 
+  function tryInlineCountSubjectParse(raw, compact) {
+    var m = compact.match(
+      /^(.+?)\s+(\d+|한|하나|두|둘|세|셋|네|넷|다섯|여섯|일곱|여덟|아홉|열|열한|열두|열세|열네|열다섯|열여섯|열일곱|열여덟|열아홉|스무|스물|서른|마흔|쉰|예순|일흔|여든|아흔)\s*(마리|명|개|척|대|건|통)(?:가|이|는|은)?\s+(.+)$/
+    );
+    if (!m) return null;
+    var subjectText = sanitizeKoreanNoun(m[1]);
+    var countVal = parseCountToken(m[2]);
+    var unit = m[3] || "마리";
+    var predicateText = normalizeUserText(m[4] || "");
+    var actionHit = extractActionFromText(predicateText + " " + raw, predicateText.split(/\s+/).filter(Boolean));
+    var actionText = normalizeActionPhrase(actionHit.token || predicateText);
+    var locInPred = predicateText.match(/^(.+?)(?:에서|에|으로)\s+(.+)$/);
+    var target = findWorldPlaceInText(raw) || "현장";
+    if (locInPred) {
+      target = sanitizeKoreanNoun(locInPred[1]);
+      actionText = normalizeActionPhrase(locInPred[2]);
+    }
+    var parsed = {
+      subject: subjectText,
+      quantity: countVal != null ? countVal : 1,
+      action: actionText,
+      target: target,
+      certainty: detectUncertainty(raw),
+      is_countable: true,
+      action_type: actionHit.category || classifyActionType(actionText, raw),
+      raw_text: raw,
+      has_explicit_quantity: true,
+      parse_confidence: 0.92,
+      parse_mode: "structured",
+    };
+    parsed = applyNegationRule(parsed, raw);
+    return normalizeParsedSlots(parsed, target);
+  }
+
   function tryPossessiveCountParse(raw, compact) {
     var m = compact.match(
       /^(.+?\s*(?:\d+|한|하나|두|둘|세|셋|네|넷|다섯|여섯|일곱|여덟|아홉|열|스무|스물|서른|마흔|쉰|예순|일흔|여든|아흔)\s*마리(?:의)?)\s+(.+?)(?:이|가|은|는)\s+(.+)$/
@@ -840,6 +1031,9 @@
     raw = stripLeadingQualifiers(raw);
 
     var compact = raw.replace(/[,.!?]/g, " ");
+    var inlineCountParsed = tryInlineCountSubjectParse(raw, compact);
+    if (inlineCountParsed) return inlineCountParsed;
+
     var subjectPlaceParsed = trySubjectPlacePredicateParse(raw, compact);
     if (subjectPlaceParsed) return subjectPlaceParsed;
 
@@ -931,6 +1125,15 @@
     }
     subject = sanitizeKoreanNoun(subject);
 
+    // object(상대) 추출: 예) "카엘이 ... 반군 무리 ... 쫓고있다"
+    // subject는 행위자(카엘)로 두고, object는 상대(반군 무리)로 분리해 trace/UI에 노출한다.
+    var objectText = "";
+    var enemyMatch = raw.match(/(반군\s*무리|반군|적병\s*무리|적병|도적\s*무리|도적|침입자\s*무리|침입자)/);
+    var pursuitCue = /(쫓|추격|추적)/.test(raw) || /(쫓|추격|추적)/.test(action);
+    if (enemyMatch && pursuitCue) {
+      objectText = sanitizeKoreanNoun(enemyMatch[1]);
+    }
+
     var cleanedTarget = extractObjectTargetFromRaw(raw);
     if (!cleanedTarget) {
       var actionIndex = -1;
@@ -992,14 +1195,18 @@
     var countable =
       hasExplicitQuantity ||
       ((actionType === "threat" || actionType === "tactical_move") && hasPluralCue(subject, raw));
+    if (hasExplicitQuantity && (quantityInfo.unit === "마리" || quantityInfo.unit === "명" || quantityInfo.unit === "개")) {
+      countable = true;
+    }
 
     var parsedResult = {
       subject: subject,
       quantity: quantity,
       action: action,
+      object: objectText || "",
       target: cleanedTarget || "알 수 없는 장소",
       certainty: detectUncertainty(raw),
-      is_countable: countable && isCountableScenario(action, raw),
+      is_countable: countable && (hasExplicitQuantity || isCountableScenario(action, raw)),
       action_type: actionType,
       raw_text: raw,
       has_explicit_quantity: hasExplicitQuantity,
@@ -1052,6 +1259,10 @@
         ? scenarioParsed.facts
         : buildFactsFromParsed(scenarioParsed);
       var reputationMap = parseReputationMap(formData.get("subjectReputation"));
+      var senderReputation = parseReputationMap(formData.get("senderReputation")) || reputationMap;
+      var receiverReputation = parseReputationMap(formData.get("receiverReputation")) || reputationMap;
+      var quantityMode = String(formData.get("quantityMode") || "dramatic");
+      var allowPartialTrust = String(formData.get("allowPartialTrust") || "on") === "on";
 
       if (outputParsePipeline) {
         outputParsePipeline.textContent = buildParsePipelineTrace(scenarioParsed, primaryFact, facts);
@@ -1060,13 +1271,28 @@
         outputFacts.textContent = formatJSON(facts);
       }
 
+      var groundTruthRaw = parseJsonField(formData.get("groundTruthJson"));
+      var groundTruth = Array.isArray(groundTruthRaw)
+        ? groundTruthRaw
+        : groundTruthRaw && groundTruthRaw.facts
+          ? groundTruthRaw.facts
+          : null;
+      var persistSession = String(formData.get("persistSession") || "") === "on";
+      var runChain = String(formData.get("runChain") || "") === "on";
+
       var result = executeScenario({
         trustLevel: trustLevel,
         senderStats: senderStats,
         receiverStats: receiverStats,
         facts: facts,
-        senderReputation: reputationMap,
-        receiverReputation: reputationMap,
+        senderReputation: senderReputation,
+        receiverReputation: receiverReputation,
+        quantityMode: quantityMode,
+        allowPartialTrust: allowPartialTrust,
+        persistSession: persistSession,
+        sessionKey: "ui-session",
+        groundTruth: groundTruth,
+        currentTick: Date.now() % 100000,
         infoTruthValue: {
           subject: primaryFact.subject,
           action: primaryFact.action,
@@ -1088,6 +1314,55 @@
         result.propagation.interpretedFacts || result.propagation.receiverInterpreted
       );
       outputKb.textContent = formatJSON(result.knowledgeBaseSnapshot);
+      if (outputAudit) {
+        outputAudit.textContent = formatJSON({
+          auditTrail: result.auditTrail || [],
+          bundleContext: result.bundleContext || {},
+          propagationMeta: {
+            partialTrust: result.propagation.partialTrust,
+            quantityMode: result.propagation.quantityMode,
+            reason: result.propagation.reason,
+          },
+        });
+      }
+      if (outputAuditDiff) {
+        outputAuditDiff.textContent = formatJSON(result.auditDiff || []);
+      }
+      if (outputGroundTruth) {
+        outputGroundTruth.textContent = result.groundTruthReport
+          ? formatJSON(result.groundTruthReport)
+          : "ground truth 미입력";
+      }
+      if (outputChain && runChain && engine.propagateChain) {
+        var chainResult = engine.propagateChain(
+          [
+            { sender: result.sender, receiver: result.receiver },
+            { sender: result.receiver, receiver: result.sender },
+          ],
+          facts,
+          result.baseInfo,
+          {
+            quantityMode: quantityMode,
+            allowPartialTrust: allowPartialTrust,
+            currentTick: (Date.now() % 100000) + 10,
+          }
+        );
+        outputChain.textContent = formatJSON({
+          hops: chainResult.hopResults.map(function (h) {
+            return {
+              hop: h.hop,
+              from: h.from,
+              to: h.to,
+              blocked: h.propagation.blocked,
+              reason: h.propagation.reason,
+            };
+          }),
+          finalFacts: chainResult.finalFacts,
+          blocked: chainResult.blocked,
+        });
+      } else if (outputChain) {
+        outputChain.textContent = "다단 전파 비활성 (체크박스 해제)";
+      }
       outputDialogueMain.value = buildReadableDialogue(result);
       saveFormState();
       appendDebug("pipeline executed, facts=" + facts.length);

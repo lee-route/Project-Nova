@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "rumor-flag",
+      "input": "소문에 따르면 도적이 마을에 들어온 것 같다",
+      "expect": {
+        "blocked": false,
+        "factRumor": true,
+        "rulesInclude": ["rumor_source_unclear"]
+      }
+    },
+    {
+      "id": "faithful-quantity",
+      "input": "북문에서 늑대 3마리가 탈출했다",
+      "options": { "quantityMode": "faithful", "senderFear": 0.9, "receiverCredulity": 0.9 },
+      "expect": { "blocked": false, "maxQuantity": 3, "rulesInclude": ["faithful_qty_preserve"] }
+    },
+    {
+      "id": "dramatic-fear-amp",
+      "input": "북문에서 늑대 3마리가 탈출했다",
+      "options": { "quantityMode": "dramatic", "senderFear": 0.85, "senderHostility": 0.2 },
+      "expect": { "blocked": false, "minQuantity": 4, "rulesInclude": ["fear_qty_amp"] }
+    },
+    {
+      "id": "trust-hard-block",
+      "input": "북문에서 늑대 3마리가 탈출했다",
+      "options": { "trustLevel": 0.05, "allowPartialTrust": false },
+      "expect": { "blocked": true }
+    },
+    {
+      "id": "trust-partial",
+      "input": "북문에서 늑대 3마리가 탈출했다",
+      "options": { "trustLevel": 0.12, "allowPartialTrust": true },
+      "expect": { "blocked": false, "partialTrust": true, "rulesInclude": ["partial_trust_degrade"] }
+    },
+    {
+      "id": "bundle-contradiction",
+      "input": "동물원에서 늑대 3마리가 탈출했는데, 동물원 원장은 태연하다.",
+      "options": { "senderFear": 0.5, "senderHostility": 0.5, "quantityMode": "faithful" },
+      "expect": {
+        "blocked": false,
+        "factsMin": 2,
+        "bundleContradiction": true,
+        "rulesInclude": ["bundle_same_place_calm_denial"]
+      }
+    },
+    {
+      "id": "high-rep-skip-hostility",
+      "input": "북문에서 늑대 3마리가 탈출했다",
+      "options": {
+        "senderHostility": 0.9,
+        "senderReputation": { "늑대": 0.95 },
+        "receiverReputation": { "늑대": 0.95 }
+      },
+      "expect": { "blocked": false, "rulesInclude": ["reputation_skip_hostility_remap"] }
+    },
+    {
+      "id": "state-no-fear-amp",
+      "input": "북문에서 공격 징후가 없었다",
+      "options": { "senderFear": 0.95, "senderHostility": 0.95, "quantityMode": "dramatic" },
+      "expect": { "blocked": false, "maxQuantity": 1, "rulesExclude": ["fear_qty_amp"] }
+    },
+    {
+      "id": "kb-merge",
+      "custom": "kb_merge",
+      "expect": { "kbMerge": true }
+    },
+    {
+      "id": "audit-diff-fields",
+      "input": "북문에서 늑대 3마리가 탈출했다",
+      "expect": { "blocked": false, "auditDiffMin": 1 }
+    },
+    {
+      "id": "bundle-same-place",
+      "input": "동물원에서 늑대 3마리가 탈출했는데, 동물원에서 공격 징후가 없었다.",
+      "options": { "senderFear": 0.5, "quantityMode": "faithful" },
+      "expect": {
+        "blocked": false,
+        "factsMin": 2,
+        "bundleContradiction": true,
+        "rulesInclude": ["bundle_same_place_calm_denial"]
+      }
+    }
+  ]
+}
