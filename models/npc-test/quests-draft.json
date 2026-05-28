@@ -1,0 +1,487 @@
+{
+  "version": 2,
+  "_meta": {
+    "purpose": "퀘스트 초안. 수시 수정용. 엔진 연동 전 데이터 정의만 포함.",
+    "designPattern": "동일 outcome + 의뢰인(questGiver)별 과정(processSteps)·정보 경험 차이",
+    "designPatternAlt": "선택: 최종 전달 대상(turnInTarget)을 의뢰인과 다르게 둘 수 있음",
+    "lastUpdated": "2026-05-27",
+    "editorNotes": [
+      "outcome 은 모든 의뢰인·경로에서 동일 (보상·스토리 플래그)",
+      "questGivers[].processSteps 로 '과정' 차별화 (장소·대사·중간 목표)",
+      "questGivers[].experience 로 왜곡·KB·연출 차별화",
+      "플레이어 선택 저장 필드(연동 시): QuestInstance.chosenQuestGiverId",
+      "objective.factMatch 는 파서/왜곡 결과(interpretedFacts)와 대조",
+      "turnInTargets 가 없으면 최종 전달 = 해당 의뢰인(npcProfileRef)"
+    ],
+    "glossary": {
+      "questGiver": "퀘스트를 누구에게서 받아 수행하는지 → 과정 분기",
+      "turnInTarget": "최종 사실을 누구에게 전달하는지 → 전파·왜곡 분기 (생략 시 의뢰인에게 전달)",
+      "outcome": "모든 경로 공통 결과 (gold/xp/worldFlags)"
+    }
+  },
+
+  "npcProfiles": {
+    "_comment": "quest-system executeScenario overrides 와 매핑 예정",
+
+    "scout": {
+      "id": "NPC_SCOUT",
+      "displayName": "정찰병",
+      "persona": "hotblood_hunter",
+      "roleHint": "퀘스트 소개·공통 발신 NPC",
+      "stats": { "fear": 0.5, "hostility": 0.4, "trust": 0.6, "credulity": 0.7 },
+      "reputation": { "늑대": 0.5, "촌장": 0.7, "상인": 0.5 },
+      "defaultTrustToPlayer": 0.7
+    },
+
+    "mayor": {
+      "id": "NPC_MAYOR",
+      "displayName": "촌장",
+      "persona": "calm_scholar",
+      "roleHint": "신중·공식 경로. 왜곡 적음, 마을 안정 톤",
+      "stats": { "fear": 0.35, "hostility": 0.2, "trust": 0.7, "credulity": 0.55 },
+      "reputation": { "촌장": 0.9, "늑대": 0.4, "상인": 0.65 },
+      "defaultTrustToPlayer": 0.72
+    },
+
+    "merchant": {
+      "id": "NPC_MERCHANT",
+      "displayName": "상인",
+      "persona": "cynical_merchant",
+      "roleHint": "소문·과장 경향. 시장 쪽 루머 확산",
+      "stats": { "fear": 0.45, "hostility": 0.35, "trust": 0.6, "credulity": 0.88 },
+      "reputation": { "상인": 0.85, "늑대": 0.25, "촌장": 0.55 },
+      "defaultTrustToPlayer": 0.58
+    },
+
+    "guard": {
+      "id": "NPC_GUARD",
+      "displayName": "경비",
+      "persona": "fearful_guard",
+      "roleHint": "공포·수량 과장. 북문 경계 강화 톤",
+      "stats": { "fear": 0.82, "hostility": 0.55, "trust": 0.55, "credulity": 0.75 },
+      "reputation": { "늑대": 0.2, "촌장": 0.75, "상인": 0.45 },
+      "defaultTrustToPlayer": 0.65
+    }
+  },
+
+  "quests": [
+    {
+      "id": "quest_report_wolf_escape",
+      "status": "draft",
+      "title": "북문의 소동",
+      "summary": "같은 사건을 해결하지만, 누구의 의뢰로 수행하느냐에 따라 과정·퍼지는 정보는 달라진다. 보상과 스토리 결과는 동일하다.",
+
+      "introNpcRef": "scout",
+      "introDialogue": "북문에서 늑대가 빠져나왔어. 촌장·상인·경비 중 누구 편에서 이 일을 맡을지 정해.",
+
+      "playerInputHintFinal": "최종 단계 입력 예: 북문에서 늑대 3마리가 탈출했다",
+      "expectedParseExample": {
+        "subjectContains": "늑대",
+        "actionType": "tactical_move",
+        "targetContains": "북문",
+        "quantity": 3
+      },
+
+      "sharedObjectives": [
+        {
+          "id": "obj_resolve_incident",
+          "type": "quest_complete",
+          "description": "북문 소동 처리 완료 (모든 의뢰인 경로 공통)",
+          "required": true
+        }
+      ],
+
+      "finalObjective": {
+        "id": "obj_deliver_report",
+        "type": "turn_in_fact",
+        "description": "조사·절차를 마친 뒤 최종 보고 문장 입력",
+        "factMatch": {
+          "subjectContains": "늑대",
+          "actionType": "tactical_move",
+          "targetContains": "북문",
+          "minQuantity": 1,
+          "minCertainty": 0.35
+        }
+      },
+
+      "outcome": {
+        "_comment": "모든 questGiver 경로에서 동일",
+        "worldFlags": ["wolf_incident_resolved"],
+        "questState": "completed",
+        "rewards": {
+          "gold": 50,
+          "xp": 100,
+          "story": { "itemId": null, "note": "메인 진행용 — 필요 시 itemId 추가" }
+        },
+        "narration": "북문 소동은 공식적으로 종료되었다."
+      },
+
+      "questGivers": [
+        {
+          "giverId": "mayor",
+          "label": "촌장의 의뢰로 처리한다",
+          "npcProfileRef": "mayor",
+          "acceptDialogue": "공식적으로 처리하자. 회관부터 시작하게.",
+          "uiHint": "절차가 길지만 소식이 덜 과장된다.",
+
+          "processSteps": [
+            {
+              "stepId": "mayor_s1_briefing",
+              "order": 1,
+              "type": "dialogue",
+              "location": "마을 회관",
+              "title": "공식 브리핑",
+              "npcLine": "먼저 사실 관계만 정리하자. 목격자가 있으면 데려오게.",
+              "playerAction": "대화 진행 (버튼)",
+              "optional": false
+            },
+            {
+              "stepId": "mayor_s2_witness",
+              "order": 2,
+              "type": "interact",
+              "location": "마을 회관 앞",
+              "title": "목격자 확인",
+              "npcLine": "북문 근처 주민에게 들은 말을 요약해 보게.",
+              "playerAction": "주민 NPC와 대화",
+              "optional": false
+            },
+            {
+              "stepId": "mayor_s3_report",
+              "order": 3,
+              "type": "fact_input",
+              "location": "마을 회관",
+              "title": "촌장에게 공식 보고",
+              "npcLine": "이제 내게 정확히 보고하게. 숫자는 가능한 한 맞추게.",
+              "playerAction": "playerInputHintFinal 참고 — 문장 입력 후 propagate",
+              "optional": false,
+              "triggersEngine": true
+            }
+          ],
+
+          "turnInTarget": {
+            "targetId": "mayor",
+            "npcProfileRef": "mayor",
+            "_note": "생략 가능. 없으면 의뢰인에게 최종 전달"
+          },
+
+          "experience": {
+            "propagationOptions": {
+              "quantityMode": "faithful",
+              "allowPartialTrust": true
+            },
+            "expectedDistortionFlavor": ["reputation_dampen_fear", "faithful_qty_preserve"],
+            "rumorSpread": "low",
+            "kbSummaryTemplate": "촌장 공식 기록: 북문 탈출 {quantity}마리, 과장 없이 대응.",
+            "completionDialogue": "수고했네. 마을 회의에 반영하겠다.",
+            "softEffects": {
+              "playerRepDelta": { "mayor": 0.12, "merchant": 0, "guard": 0.03 },
+              "unlockDialogueIds": ["mayor_calm_aftermath"]
+            },
+            "postCompletionLines": [
+              "마을 회의가 조용히 열렸다.",
+              "주민들은 크게 동요하지 않는다."
+            ]
+          }
+        },
+
+        {
+          "giverId": "merchant",
+          "label": "상인의 의뢰로 처리한다",
+          "npcProfileRef": "merchant",
+          "acceptDialogue": "시장이 시끄러워지기 전에 움직이자. 손님들 귀는 예민하거든.",
+          "uiHint": "과정이 빠르지만 소문이 시장에 퍼질 수 있다.",
+
+          "processSteps": [
+            {
+              "stepId": "merchant_s1_market",
+              "order": 1,
+              "type": "dialogue",
+              "location": "시장",
+              "title": "시장 상황 파악",
+              "npcLine": "먼저 시장부터 돌아보자. 뭐가 새고 있는지 감이 와.",
+              "playerAction": "시장 NPC 관찰",
+              "optional": false
+            },
+            {
+              "stepId": "merchant_s2_rumor_check",
+              "order": 2,
+              "type": "interact",
+              "location": "주막",
+              "title": "소문 단서 수집",
+              "npcLine": "주막에서 이미 풍문이 도는지 들어봐. 과장됐는지도.",
+              "playerAction": "주막 주인과 대화",
+              "optional": true
+            },
+            {
+              "stepId": "merchant_s3_report",
+              "order": 3,
+              "type": "fact_input",
+              "location": "시장",
+              "title": "상인에게 보고",
+              "npcLine": "좋아, 이제 내게 말해. 시장에 퍼지기 전에 정리하자.",
+              "playerAction": "문장 입력 후 propagate",
+              "optional": false,
+              "triggersEngine": true
+            }
+          ],
+
+          "turnInTarget": {
+            "targetId": "merchant",
+            "npcProfileRef": "merchant"
+          },
+
+          "experience": {
+            "propagationOptions": {
+              "quantityMode": "dramatic",
+              "allowPartialTrust": true
+            },
+            "expectedDistortionFlavor": ["rumor_source_unclear", "fear_qty_amp"],
+            "rumorSpread": "high",
+            "kbSummaryTemplate": "상인 쪽 기록: {quantity}마리 이상, 무리 더 있을 수도.",
+            "completionDialogue": "알겠어. 금방 시장 전체가 이 얘기로 떠들겠지.",
+            "softEffects": {
+              "playerRepDelta": { "mayor": -0.04, "merchant": 0.14, "guard": 0 },
+              "unlockDialogueIds": ["market_rumor_aftermath"]
+            },
+            "postCompletionLines": [
+              "시장에서 늑대 이야기가 오간다.",
+              "몇몇 상인이 문을 닫았다."
+            ]
+          }
+        },
+
+        {
+          "giverId": "guard",
+          "label": "경비의 의뢰로 처리한다",
+          "npcProfileRef": "guard",
+          "acceptDialogue": "말보다 현장이 먼저다. 북문으로 와.",
+          "uiHint": "현장 중심. 경계 강화되지만 수량이 과장될 수 있다.",
+
+          "processSteps": [
+            {
+              "stepId": "guard_s1_north_gate",
+              "order": 1,
+              "type": "travel",
+              "location": "북문",
+              "title": "북문 현장 도착",
+              "npcLine": "발자국, 털, 냄새. 눈으로 직접 확인해.",
+              "playerAction": "북문 트리거 존 진입",
+              "optional": false
+            },
+            {
+              "stepId": "guard_s2_patrol",
+              "order": 2,
+              "type": "interact",
+              "location": "북문 외곽",
+              "title": "순찰병과 합류",
+              "npcLine": "순찰병에게 들은 시각·마리 수를 맞춰봐.",
+              "playerAction": "순찰병 대화",
+              "optional": false
+            },
+            {
+              "stepId": "guard_s3_report",
+              "order": 3,
+              "type": "fact_input",
+              "location": "북문 초소",
+              "title": "경비대장에게 보고",
+              "npcLine": "이제 보고해. 빠뜨리면 안 되는 것도, 지어내면 안 되는 것도 있지.",
+              "playerAction": "문장 입력 후 propagate",
+              "optional": false,
+              "triggersEngine": true
+            }
+          ],
+
+          "turnInTarget": {
+            "targetId": "guard",
+            "npcProfileRef": "guard"
+          },
+
+          "experience": {
+            "propagationOptions": {
+              "quantityMode": "dramatic",
+              "allowPartialTrust": true
+            },
+            "expectedDistortionFlavor": ["fear_qty_amp", "fear_target_distort"],
+            "rumorSpread": "medium",
+            "kbSummaryTemplate": "경비 기록: 북문 일대 위험, 늑대 {quantity}마리 이상 추정.",
+            "completionDialogue": "알겠다. 경계 인원을 늘리겠다.",
+            "softEffects": {
+              "playerRepDelta": { "guard": 0.15, "mayor": 0.04, "merchant": 0 },
+              "unlockDialogueIds": ["north_gate_alert_aftermath"]
+            },
+            "postCompletionLines": [
+              "북문 경비가 두 배로 늘었다.",
+              "나무에 경계 표시가 걸렸다."
+            ]
+          }
+        }
+      ],
+
+      "_legacy_turnInOnly": {
+        "_comment": "v1 설계(보고 대상만 분기). 참고용 — 구현 시 questGivers 우선",
+        "turnInTargets": ["mayor", "merchant", "guard"]
+      }
+    },
+
+    {
+      "id": "quest_report_rebel_chase",
+      "status": "draft",
+      "title": "대초원의 추격",
+      "summary": "카엘의 추격 정보를 누구 의뢰로 처리하느냐에 따라 과정이 다르다. 결과 보상은 동일.",
+      "_engineNote": "object 슬롯이 왜곡/KB까지 전달된 뒤 factMatch.objectContains 활성화",
+
+      "introNpcRef": "scout",
+      "introDialogue": "대초원 쪽 소식이야. 촌장·경비 중 누구 일로 맡을지 정해.",
+
+      "playerInputHintFinal": "예: 카엘이 대초원에서 패퇴하는 마을의 반군 무리 대여섯명을 쫓고있다",
+
+      "finalObjective": {
+        "id": "obj_chase_report",
+        "type": "turn_in_fact",
+        "description": "추격 상황 최종 보고",
+        "factMatch": {
+          "subjectContains": "카엘",
+          "actionType": "tactical_move",
+          "targetContains": "대초원",
+          "objectContains": "반군",
+          "minQuantity": 4
+        }
+      },
+
+      "outcome": {
+        "worldFlags": ["rebel_chase_logged"],
+        "questState": "completed",
+        "rewards": { "gold": 40, "xp": 80 },
+        "narration": "추격 상황이 공식 기록에 남았다."
+      },
+
+      "questGivers": [
+        {
+          "giverId": "mayor",
+          "label": "촌장의 의뢰",
+          "npcProfileRef": "mayor",
+          "acceptDialogue": "민간인 추격은 민감하다. 서류부터 맞추자.",
+          "processSteps": [
+            {
+              "stepId": "chase_mayor_s1",
+              "order": 1,
+              "type": "dialogue",
+              "location": "마을 회관",
+              "title": "공문 초안",
+              "npcLine": "카엘 이름과 대략적 인원만 적어두게.",
+              "playerAction": "대화"
+            },
+            {
+              "stepId": "chase_mayor_s2",
+              "order": 2,
+              "type": "fact_input",
+              "location": "마을 회관",
+              "title": "촌장에게 보고",
+              "npcLine": "이제 들은 대로 보고하게.",
+              "playerAction": "문장 입력",
+              "triggersEngine": true
+            }
+          ],
+          "experience": {
+            "propagationOptions": { "quantityMode": "faithful" },
+            "completionDialogue": "기록했다. 무리한 추격은 삼가도록 하겠네.",
+            "kbSummaryTemplate": "촌장 기록: 카엘, 대초원에서 반군 일부 추격."
+          }
+        },
+        {
+          "giverId": "guard",
+          "label": "경비의 의뢰",
+          "npcProfileRef": "guard",
+          "acceptDialogue": "전장은 말이 아니라 눈으로 본다. 대초원으로.",
+          "processSteps": [
+            {
+              "stepId": "chase_guard_s1",
+              "order": 1,
+              "type": "travel",
+              "location": "대초원 입구",
+              "title": "전선 접근",
+              "npcLine": "먼지·발자국. 규모를 짐작해봐.",
+              "playerAction": "존 진입"
+            },
+            {
+              "stepId": "chase_guard_s2",
+              "order": 2,
+              "type": "fact_input",
+              "location": "대초원 초소",
+              "title": "경비에게 보고",
+              "npcLine": "숫자는 넉넉히 잡아도 된다. 놓치는 것보다 낫지.",
+              "playerAction": "문장 입력",
+              "triggersEngine": true
+            }
+          ],
+          "experience": {
+            "propagationOptions": { "quantityMode": "dramatic" },
+            "completionDialogue": "알겠다. 증원 검토하겠다.",
+            "kbSummaryTemplate": "경비 기록: 대규모 반군 무리 추격 중."
+          }
+        }
+      ]
+    }
+  ],
+
+  "questInstanceTemplate": {
+    "_comment": "런타임 상태 (연동 시). JSON 초안에는 참고용",
+    "questId": "quest_report_wolf_escape",
+    "state": "offered",
+    "chosenQuestGiverId": null,
+    "currentStepId": null,
+    "completedStepIds": [],
+    "turnInNpcId": null
+  },
+
+  "questTemplate": {
+    "_comment": "새 퀘스트: 이 블록 복사 → quests[] 에 추가",
+    "id": "quest_NEW_ID",
+    "status": "draft",
+    "title": "제목",
+    "summary": "동일 outcome + questGiver별 processSteps",
+    "introNpcRef": "scout",
+    "introDialogue": "",
+    "playerInputHintFinal": "",
+    "finalObjective": {
+      "id": "obj_final",
+      "type": "turn_in_fact",
+      "factMatch": {}
+    },
+    "outcome": {
+      "worldFlags": [],
+      "questState": "completed",
+      "rewards": { "gold": 0, "xp": 0 }
+    },
+    "questGivers": [
+      {
+        "giverId": "giver_a",
+        "label": "A의 의뢰",
+        "npcProfileRef": "mayor",
+        "acceptDialogue": "",
+        "processSteps": [
+          {
+            "stepId": "a_s1",
+            "order": 1,
+            "type": "dialogue",
+            "location": "",
+            "title": "",
+            "npcLine": "",
+            "playerAction": ""
+          },
+          {
+            "stepId": "a_s_final",
+            "order": 2,
+            "type": "fact_input",
+            "triggersEngine": true,
+            "playerAction": "문장 입력"
+          }
+        ],
+        "experience": {
+          "propagationOptions": { "quantityMode": "faithful" },
+          "completionDialogue": ""
+        }
+      }
+    ]
+  }
+}
