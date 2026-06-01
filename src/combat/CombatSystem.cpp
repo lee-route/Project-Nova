@@ -1,85 +1,86 @@
 #include "combat/CombatSystem.h"
 
+#include "combat/ICombatant.h"
+
 #include <algorithm>
 
-namespace nova::combat {
+namespace nova {
 
-void CombatSystem::RegisterDamageable(IDamageable* damageable) {
-    if (damageable == nullptr) {
-        return;
+namespace {
+bool isIgnored(int id, const std::vector<int>* ignoreIds) {
+    if (ignoreIds == nullptr) {
+        return false;
     }
-
-    const auto it = std::find(damageables_.begin(), damageables_.end(), damageable);
-    if (it == damageables_.end()) {
-        damageables_.push_back(damageable);
-    }
+    return std::find(ignoreIds->begin(), ignoreIds->end(), id) != ignoreIds->end();
 }
+} // namespace
 
-void CombatSystem::SetDamageEventListener(IDamageEventListener* damageEventListener) {
-    damageEventListener_ = damageEventListener;
-}
+AttackResult CombatSystem::resolveMeleeAttack(const Hitbox& attackHitbox,
+                                              const DamageInfo& damage,
+                                              const std::vector<ICombatant*>& targets,
+                                              const std::vector<int>* ignoreIds) {
+    AttackResult result;
 
-void CombatSystem::UnregisterDamageable(IDamageable* damageable) {
-    damageables_.erase(
-        std::remove(damageables_.begin(), damageables_.end(), damageable),
-        damageables_.end()
-    );
-    lastHitAttackIdByTarget_.erase(damageable);
-}
-
-bool CombatSystem::TryStartPlayerAttack(WeaponComponent& playerWeapon, const std::uint32_t nowMs) const {
-    return playerWeapon.StartAttack(nowMs);
-}
-
-std::size_t CombatSystem::ProcessPlayerAttack(
-    const Hitbox& playerAttackHitbox,
-    WeaponComponent& playerWeapon,
-    const int playerId,
-    const std::uint32_t nowMs
-) {
-    if (!playerWeapon.IsAttackActive(nowMs)) {
-        return 0U;
-    }
-
-    const std::uint32_t currentAttackId = playerWeapon.GetCurrentAttackId();
-    const AttackData& attackData = playerWeapon.GetAttackData();
-    const DamageInfo damage{
-        playerId,
-        attackData.damage,
-        attackData.knockbackX,
-        attackData.knockbackY,
-        attackData.hitStunMs,
-        true
-    };
-
-    std::size_t hitCount = 0U;
-    for (IDamageable* target : damageables_) {
-        if (target == nullptr || !target->IsAlive()) {
+    for (ICombatant* target : targets) {
+        if (target == nullptr) {
             continue;
         }
-
-        const auto it = lastHitAttackIdByTarget_.find(target);
-        if (it != lastHitAttackIdByTarget_.end() && it->second == currentAttackId) {
+        // Never let an attacker damage itself.
+        if (target->id() == damage.sourceId) {
             continue;
         }
-
-        if (playerAttackHitbox.Intersects(target->GetHurtbox())) {
-            const Hitbox hurtbox = target->GetHurtbox();
-            target->ApplyDamage(damage); // Monster damage always goes through ApplyDamage.
-            lastHitAttackIdByTarget_[target] = currentAttackId;
-            if (damageEventListener_ != nullptr) {
-                damageEventListener_->OnDamageApplied(DamageEvent{
-                    target,
-                    damage.amount,
-                    hurtbox.x + hurtbox.w * 0.5F,
-                    hurtbox.y
-                });
-            }
-            ++hitCount;
+        // Already hit by this same swing -> skip (once-per-attack rule).
+        if (isIgnored(target->id(), ignoreIds)) {
+            continue;
+        }
+        // Dead things take no further damage.
+        if (!target->isAlive()) {
+            continue;
+        }
+        // Geometry test: did the swing overlap this target's body?
+        if (attackHitbox.intersects(target->bodyHitbox())) {
+            // Hand the packet to the target; IT decides how to react
+            // (i-frames, armor, death). Combat does not touch HP directly.
+            target->applyDamage(damage);
+            result.hitCount += 1;
+            result.totalDamage += damage.amount;
+            result.hitIds.push_back(target->id());
         }
     }
 
-    return hitCount;
+    return result;
 }
 
-} // namespace nova::combat
+AttackResult CombatSystem::resolveRadialAttack(const Vector2& center,
+                                               float radius,
+                                               const DamageInfo& damage,
+                                               const std::vector<ICombatant*>& targets,
+                                               const std::vector<int>* ignoreIds) {
+    AttackResult result;
+
+    for (ICombatant* target : targets) {
+        if (target == nullptr) {
+            continue;
+        }
+        if (target->id() == damage.sourceId) {
+            continue;
+        }
+        if (isIgnored(target->id(), ignoreIds)) {
+            continue;
+        }
+        if (!target->isAlive()) {
+            continue;
+        }
+        // Circular test: is any part of the body within `radius` of `center`?
+        if (target->bodyHitbox().intersectsCircle(center.x, center.y, radius)) {
+            target->applyDamage(damage);
+            result.hitCount += 1;
+            result.totalDamage += damage.amount;
+            result.hitIds.push_back(target->id());
+        }
+    }
+
+    return result;
+}
+
+} // namespace nova
