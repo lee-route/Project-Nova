@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "npcs": {
+    "scout": {
+      "id": "NPC_SCOUT",
+      "displayName": "정찰병",
+      "persona": "hotblood_hunter",
+      "stats": { "fear": 0.5, "hostility": 0.4, "trust": 0.6, "credulity": 0.7 },
+      "reputation": { "늑대": 0.5, "촌장": 0.7, "상인": 0.5 },
+      "defaultTrustToPlayer": 0.7
+    },
+    "mayor": {
+      "id": "NPC_MAYOR",
+      "displayName": "촌장",
+      "persona": "calm_scholar",
+      "stats": { "fear": 0.35, "hostility": 0.2, "trust": 0.7, "credulity": 0.55 },
+      "reputation": { "촌장": 0.9, "늑대": 0.4, "상인": 0.65 },
+      "defaultTrustToPlayer": 0.72
+    },
+    "merchant": {
+      "id": "NPC_MERCHANT",
+      "displayName": "상인",
+      "persona": "cynical_merchant",
+      "stats": { "fear": 0.45, "hostility": 0.35, "trust": 0.6, "credulity": 0.88 },
+      "reputation": { "상인": 0.85, "늑대": 0.25, "촌장": 0.55 },
+      "defaultTrustToPlayer": 0.58
+    },
+    "guard": {
+      "id": "NPC_GUARD",
+      "displayName": "경비",
+      "persona": "fearful_guard",
+      "stats": { "fear": 0.82, "hostility": 0.55, "trust": 0.55, "credulity": 0.75 },
+      "reputation": { "늑대": 0.2, "촌장": 0.75, "상인": 0.45 },
+      "defaultTrustToPlayer": 0.65
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "player": {
+    "id": "player",
+    "displayName": "카엘",
+    "propagationProfile": {
+      "persona": "witness",
+      "fear": 0.1,
+      "hostility": 0.1
+    },
+    "defaultQuantityMode": "faithful"
+  }
+}

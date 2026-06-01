@@ -13,6 +13,42 @@
         결정론 엔진이 정보를 왜곡/전파하고, LLM은 전달된 JSON만 기반으로 대사를 생성합니다.
       </p>
 
+      <form id="llm-settings-form" class="panel controls llm-panel">
+        <h2>LLM (결제 후 연결)</h2>
+        <p class="desc">
+          지금은 <strong>mock</strong>만 사용합니다. API 키 입력 후 Use Live LLM을 켜면 실제 호출합니다.
+        </p>
+        <div class="grid">
+          <label>
+            Provider
+            <select name="llmProvider">
+              <option value="mock">mock (오프라인)</option>
+              <option value="openai">openai</option>
+              <option value="openai_compatible">openai_compatible (로컬/프록시)</option>
+              <option value="anthropic">anthropic</option>
+            </select>
+          </label>
+          <label>
+            Model
+            <input type="text" name="llmModel" value="gpt-4o-mini" />
+          </label>
+          <label class="full-width">
+            API Key (저장: localStorage)
+            <input type="password" name="llmApiKey" autocomplete="off" placeholder="sk-..." />
+          </label>
+          <label class="full-width">
+            Base URL (선택, openai_compatible / 커스텀)
+            <input type="text" name="llmBaseUrl" placeholder="https://api.openai.com/v1/chat/completions" />
+          </label>
+          <label class="checkbox-label">
+            Use Live LLM
+            <input type="checkbox" name="llmUseLive" />
+          </label>
+        </div>
+        <button type="submit">Save LLM Settings</button>
+        <p id="llm-status" class="desc">provider=mock, live=OFF</p>
+      </form>
+
       <form id="control-form" class="panel controls">
         <h2>Scenario Controls</h2>
         <label>
@@ -225,6 +261,39 @@
         <pre id="out-audit"></pre>
       </section>
 
+      <section class="panel quest-panel">
+        <h2>Quest Playtest (P0)</h2>
+        <p class="desc">
+          의뢰인별 전파·왜곡은 다르고, <code>factMatch</code> 통과 시 동일 <code>outcome</code>입니다.
+        </p>
+        <div class="grid">
+          <label class="full-width">
+            Quest
+            <select id="quest-select"></select>
+          </label>
+          <label class="full-width">
+            Quest Giver
+            <select id="quest-giver-select"></select>
+          </label>
+          <label class="full-width">
+            Final Report (player input)
+            <textarea id="quest-report-text" rows="2">북문에서 늑대 3마리가 탈출했다</textarea>
+          </label>
+        </div>
+        <button type="button" id="run-quest-turn-in">Run Quest Turn-In</button>
+        <button type="button" id="run-quest-compare">Compare All Givers</button>
+        <div class="panel-head">
+          <h3>Quest Result</h3>
+          <button type="button" class="toggle-btn" data-target="out-quest">접기</button>
+        </div>
+        <pre id="out-quest">퀘스트 미실행</pre>
+        <div class="panel-head">
+          <h3>Path Compare</h3>
+          <button type="button" class="toggle-btn" data-target="out-quest-compare">접기</button>
+        </div>
+        <pre id="out-quest-compare">비교 미실행</pre>
+      </section>
+
       <section class="panel">
         <div class="panel-head">
           <h2>Integration E2E Results</h2>
@@ -263,9 +332,24 @@
       });
     </script>
     <script
+      src="./llm-adapter.js"
+      onload="window.__appendInlineDebug('llm-adapter.js loaded')"
+      onerror="window.__appendInlineDebug('llm-adapter.js load failed')"
+    ></script>
+    <script
       src="./quest-system.js"
       onload="window.__appendInlineDebug('quest-system.js loaded')"
       onerror="window.__appendInlineDebug('quest-system.js load failed')"
+    ></script>
+    <script
+      src="./llm-settings.js"
+      onload="window.__appendInlineDebug('llm-settings.js loaded')"
+      onerror="window.__appendInlineDebug('llm-settings.js load failed')"
+    ></script>
+    <script
+      src="./data-loader.js"
+      onload="window.__appendInlineDebug('data-loader.js loaded')"
+      onerror="window.__appendInlineDebug('data-loader.js load failed')"
     ></script>
     <script
       src="./dictionaries.js"
@@ -291,6 +375,16 @@
       src="./integration-runner.js"
       onload="window.__appendInlineDebug('integration-runner.js loaded')"
       onerror="window.__appendInlineDebug('integration-runner.js load failed')"
+    ></script>
+    <script
+      src="./quest-runtime.js"
+      onload="window.__appendInlineDebug('quest-runtime.js loaded')"
+      onerror="window.__appendInlineDebug('quest-runtime.js load failed')"
+    ></script>
+    <script
+      src="./quest-runner.js"
+      onload="window.__appendInlineDebug('quest-runner.js loaded')"
+      onerror="window.__appendInlineDebug('quest-runner.js load failed')"
     ></script>
   </body>
 </html>

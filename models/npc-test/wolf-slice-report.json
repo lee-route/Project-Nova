@@ -1,0 +1,212 @@
+{
+  "generatedAt": "2026-06-01T10:38:46.336Z",
+  "title": "북문의 소동",
+  "questId": "quest_report_wolf_escape",
+  "playerReportText": "북문에서 늑대 3마리가 탈출했다",
+  "parserOutput": {
+    "parse_mode": "structured",
+    "parse_confidence": 0.92,
+    "facts": [
+      {
+        "fact_id": "F01",
+        "subject": "늑대",
+        "action": "탈출",
+        "object": "",
+        "target": "북문",
+        "quantity": 3,
+        "certainty": 0.75,
+        "is_countable": true,
+        "action_type": "tactical_move",
+        "parse_confidence": 0.92,
+        "parse_mode": "structured",
+        "raw_text": "북문에서 늑대 3마리가 탈출했다",
+        "source_text": "북문에서 늑대 3마리가 탈출했다",
+        "rumor": false
+      }
+    ]
+  },
+  "designClaim": "동일 플레이어 보고 → 의뢰인별 전파·해석 차이 → factMatch 통과 시 동일 outcome",
+  "paths": [
+    {
+      "giverId": "mayor",
+      "label": "촌장의 의뢰로 처리한다",
+      "turnInProfileKey": "mayor",
+      "quantityMode": "faithful",
+      "expectedFlavor": [
+        "reputation_dampen_fear",
+        "faithful_qty_preserve"
+      ],
+      "rumorSpread": "low",
+      "completed": true,
+      "outcome": {
+        "_comment": "모든 questGiver 경로에서 동일",
+        "worldFlags": [
+          "wolf_incident_resolved"
+        ],
+        "questState": "completed",
+        "rewards": {
+          "gold": 50,
+          "xp": 100,
+          "story": {
+            "itemId": null,
+            "note": "메인 진행용 — 필요 시 itemId 추가"
+          }
+        },
+        "narration": "북문 소동은 공식적으로 종료되었다."
+      },
+      "blocked": false,
+      "partialTrust": false,
+      "interpretedFacts": [
+        {
+          "subject": "늑대",
+          "action": "탈출",
+          "target": "북문",
+          "object": "",
+          "quantity": 3,
+          "certainty": 0.69,
+          "action_type": "tactical_move",
+          "applied_rules": [
+            "faithful_qty_preserve",
+            "credulity_certainty_blend"
+          ]
+        }
+      ],
+      "completionReason": "",
+      "processStepCount": 3
+    },
+    {
+      "giverId": "merchant",
+      "label": "상인의 의뢰로 처리한다",
+      "turnInProfileKey": "merchant",
+      "quantityMode": "dramatic",
+      "expectedFlavor": [
+        "rumor_source_unclear",
+        "fear_qty_amp"
+      ],
+      "rumorSpread": "high",
+      "completed": true,
+      "outcome": {
+        "_comment": "모든 questGiver 경로에서 동일",
+        "worldFlags": [
+          "wolf_incident_resolved"
+        ],
+        "questState": "completed",
+        "rewards": {
+          "gold": 50,
+          "xp": 100,
+          "story": {
+            "itemId": null,
+            "note": "메인 진행용 — 필요 시 itemId 추가"
+          }
+        },
+        "narration": "북문 소동은 공식적으로 종료되었다."
+      },
+      "blocked": false,
+      "partialTrust": false,
+      "interpretedFacts": [
+        {
+          "subject": "늑대",
+          "action": "탈출",
+          "target": "북문",
+          "object": "",
+          "quantity": 5,
+          "certainty": 0.86,
+          "action_type": "tactical_move",
+          "applied_rules": [
+            "credulity_qty_amp",
+            "credulity_certainty_blend",
+            "reputation_boost_distortion_belief"
+          ]
+        }
+      ],
+      "completionReason": "",
+      "processStepCount": 3
+    },
+    {
+      "giverId": "guard",
+      "label": "경비의 의뢰로 처리한다",
+      "turnInProfileKey": "guard",
+      "quantityMode": "dramatic",
+      "expectedFlavor": [
+        "fear_qty_amp",
+        "fear_target_distort"
+      ],
+      "rumorSpread": "medium",
+      "completed": true,
+      "outcome": {
+        "_comment": "모든 questGiver 경로에서 동일",
+        "worldFlags": [
+          "wolf_incident_resolved"
+        ],
+        "questState": "completed",
+        "rewards": {
+          "gold": 50,
+          "xp": 100,
+          "story": {
+            "itemId": null,
+            "note": "메인 진행용 — 필요 시 itemId 추가"
+          }
+        },
+        "narration": "북문 소동은 공식적으로 종료되었다."
+      },
+      "blocked": false,
+      "partialTrust": false,
+      "interpretedFacts": [
+        {
+          "subject": "늑대",
+          "action": "탈출",
+          "target": "북문",
+          "object": "",
+          "quantity": 4,
+          "certainty": 0.8,
+          "action_type": "tactical_move",
+          "applied_rules": [
+            "credulity_qty_amp",
+            "credulity_certainty_blend",
+            "reputation_boost_distortion_belief"
+          ]
+        }
+      ],
+      "completionReason": "",
+      "processStepCount": 3
+    }
+  ],
+  "summary": {
+    "allCompleted": true,
+    "outcomesMatch": true,
+    "sharedOutcome": {
+      "_comment": "모든 questGiver 경로에서 동일",
+      "worldFlags": [
+        "wolf_incident_resolved"
+      ],
+      "questState": "completed",
+      "rewards": {
+        "gold": 50,
+        "xp": 100,
+        "story": {
+          "itemId": null,
+          "note": "메인 진행용 — 필요 시 itemId 추가"
+        }
+      },
+      "narration": "북문 소동은 공식적으로 종료되었다."
+    },
+    "quantityByGiver": {
+      "mayor": 3,
+      "merchant": 5,
+      "guard": 4
+    },
+    "certaintyByGiver": {
+      "mayor": 0.69,
+      "merchant": 0.86,
+      "guard": 0.8
+    }
+  },
+  "capstoneChecklist": {
+    "captureScreenshots": [
+      "index.html Quest Playtest — Compare All Givers",
+      "파서 Facts 패널 (player input)",
+      "interpretedFacts / Engine Data (NPC가 본 정보)"
+    ],
+    "pasteThisJson": "wolf-slice-report.json"
+  }
+}

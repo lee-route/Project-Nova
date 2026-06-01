@@ -5,6 +5,8 @@
     "designPattern": "동일 outcome + 의뢰인(questGiver)별 과정(processSteps)·정보 경험 차이",
     "designPatternAlt": "선택: 최종 전달 대상(turnInTarget)을 의뢰인과 다르게 둘 수 있음",
     "lastUpdated": "2026-05-27",
+    "npcDataFile": "npcs.json",
+    "playerDataFile": "player-profile.json",
     "editorNotes": [
       "outcome 은 모든 의뢰인·경로에서 동일 (보상·스토리 플래그)",
       "questGivers[].processSteps 로 '과정' 차별화 (장소·대사·중간 목표)",
@@ -21,7 +23,7 @@
   },
 
   "npcProfiles": {
-    "_comment": "quest-system executeScenario overrides 와 매핑 예정",
+    "_comment": "레거시 참조용 — 런타임은 npcs.json 사용. 아래 키는 npcProfileRef 와 동일",
 
     "scout": {
       "id": "NPC_SCOUT",

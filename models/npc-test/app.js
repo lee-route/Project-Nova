@@ -1297,6 +1297,7 @@
           subject: primaryFact.subject,
           action: primaryFact.action,
           target: primaryFact.target,
+          object: primaryFact.object || "",
           quantity: primaryFact.quantity,
           certainty: primaryFact.certainty,
           is_countable: primaryFact.is_countable,
@@ -1374,11 +1375,35 @@
         return;
       }
 
-      if (outputEngineData && result.dialogue) {
-        outputEngineData.textContent = formatJSON(result.dialogue.engineData || {});
+      function showDialogue(res) {
+        if (outputEngineData && res.dialogue) {
+          outputEngineData.textContent = formatJSON({
+            engineData: res.dialogue.engineData || {},
+            llmProvider: res.dialogue.llmProvider || "mock",
+          });
+        }
+        outputDialogue.textContent = res.dialogue ? res.dialogue.finalSpeech : "";
+        appendDebug("dialogue rendered (" + (res.dialogue && res.dialogue.llmProvider) + ")");
       }
-      outputDialogue.textContent = result.dialogue ? result.dialogue.finalSpeech : "";
-      appendDebug("dialogue rendered");
+
+      if (
+        window.LlmAdapter &&
+        window.LlmAdapter.isLive() &&
+        result.dialogue &&
+        result.dialogue.llmPending
+      ) {
+        outputDialogue.textContent = "Live LLM 생성 중…";
+        window.LlmAdapter.enrichDialogueResult(result, result.receiver && result.receiver.persona)
+          .then(showDialogue)
+          .catch(function (err) {
+            appendDebug("llm error: " + (err.message || err));
+            outputDialogue.textContent =
+              "LLM 오류 (mock 유지): " + (err.message || err) + "\n\n" + (result.dialogue.finalSpeech || "");
+          });
+        return;
+      }
+
+      showDialogue(result);
     } catch (error) {
       var message = (error && error.message) ? error.message : String(error);
       appendDebug("render error: " + message);

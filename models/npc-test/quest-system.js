@@ -26,6 +26,118 @@ const PERSONA_DISTORTION_PROFILES = {
 
 const SESSION_STORE = new Map();
 
+const BUILTIN_PROFILE_REGISTRY = {
+  player: {
+    id: "player",
+    displayName: "카엘",
+    propagationProfile: { persona: "witness", fear: 0.1, hostility: 0.1 },
+    defaultQuantityMode: "faithful",
+  },
+  npcs: {
+    scout: {
+      id: "NPC_SCOUT",
+      displayName: "정찰병",
+      persona: "hotblood_hunter",
+      stats: { fear: 0.5, hostility: 0.4, trust: 0.6, credulity: 0.7 },
+      reputation: { 늑대: 0.5, 촌장: 0.7, 상인: 0.5 },
+      defaultTrustToPlayer: 0.7,
+    },
+    mayor: {
+      id: "NPC_MAYOR",
+      displayName: "촌장",
+      persona: "calm_scholar",
+      stats: { fear: 0.35, hostility: 0.2, trust: 0.7, credulity: 0.55 },
+      reputation: { 촌장: 0.9, 늑대: 0.4, 상인: 0.65 },
+      defaultTrustToPlayer: 0.72,
+    },
+    merchant: {
+      id: "NPC_MERCHANT",
+      displayName: "상인",
+      persona: "cynical_merchant",
+      stats: { fear: 0.45, hostility: 0.35, trust: 0.6, credulity: 0.88 },
+      reputation: { 상인: 0.85, 늑대: 0.25, 촌장: 0.55 },
+      defaultTrustToPlayer: 0.58,
+    },
+    guard: {
+      id: "NPC_GUARD",
+      displayName: "경비",
+      persona: "fearful_guard",
+      stats: { fear: 0.82, hostility: 0.55, trust: 0.55, credulity: 0.75 },
+      reputation: { 늑대: 0.2, 촌장: 0.75, 상인: 0.45 },
+      defaultTrustToPlayer: 0.65,
+    },
+  },
+};
+
+let PROFILE_REGISTRY = null;
+
+function getProfileRegistry() {
+  return PROFILE_REGISTRY || BUILTIN_PROFILE_REGISTRY;
+}
+
+function registerProfiles(registry) {
+  if (!registry || typeof registry !== "object") return;
+  const current = getProfileRegistry();
+  PROFILE_REGISTRY = {
+    npcs: registry.npcs || current.npcs,
+    player: registry.player || current.player,
+  };
+}
+
+function createNpcFromProfile(profileKey) {
+  const prof = getProfileRegistry().npcs[profileKey];
+  if (!prof) {
+    throw new Error("Unknown NPC profile: " + profileKey);
+  }
+  const npc = new NPC({
+    id: prof.id,
+    name: prof.displayName,
+    persona: prof.persona,
+    stats: {
+      fear: prof.stats.fear,
+      hostility: prof.stats.hostility,
+      trust: prof.stats.trust,
+      credulity: prof.stats.credulity,
+    },
+    reputation: {},
+  });
+  Object.keys(prof.reputation || {}).forEach((key) => {
+    npc.setSubjectReputation(key, prof.reputation[key]);
+  });
+  npc.profileKey = profileKey;
+  return npc;
+}
+
+function createPlayerActor() {
+  const p = getProfileRegistry().player;
+  const spread = p.propagationProfile || {};
+  const npc = new NPC({
+    id: p.id,
+    name: p.displayName,
+    persona: spread.persona || "witness",
+    stats: {
+      fear: spread.fear ?? 0.1,
+      hostility: spread.hostility ?? 0.1,
+      trust: 0.5,
+      credulity: 0.5,
+    },
+    reputation: {},
+  });
+  npc.isPlayer = true;
+  return npc;
+}
+
+function resolveTrustToReceiver(sender, receiver, receiverProfileKey, overrides) {
+  if (typeof overrides.trustLevel === "number") {
+    return overrides.trustLevel;
+  }
+  if (sender.isPlayer) {
+    const prof = getProfileRegistry().npcs[receiverProfileKey];
+    return prof?.defaultTrustToPlayer ?? 0.7;
+  }
+  return 0.74;
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -377,10 +489,27 @@ function snapshotTruth(tv) {
     subject: tv.subject,
     action: tv.action,
     target: tv.target,
+    object: tv.object || "",
     quantity: tv.quantity,
     certainty: tv.certainty,
     is_countable: tv.is_countable,
     action_type: tv.action_type,
+  };
+}
+
+function toGroundedFact(tv, meta = {}) {
+  return {
+    subject: tv.subject,
+    action: tv.action,
+    target: tv.target,
+    object: tv.object || "",
+    quantity: tv.quantity,
+    certainty: tv.certainty,
+    is_countable: tv.is_countable,
+    action_type: tv.action_type,
+    applied_rules: meta.applied_rules || [],
+    bundle_notes: meta.bundle_notes || [],
+    rumor: Boolean(meta.rumor),
   };
 }
 
@@ -391,6 +520,7 @@ function factInputToAtom(fact, originalInfo, index) {
       subject: fact.subject,
       action: fact.action,
       target: fact.target,
+      object: fact.object || "",
       quantity: fact.quantity,
       certainty: fact.certainty,
       is_countable: fact.is_countable,
@@ -418,6 +548,7 @@ function interpretedToFactInputs(interpretedFacts) {
       subject: tv.subject,
       action: tv.action,
       target: tv.target,
+      object: tv.object || "",
       quantity: tv.quantity,
       certainty: tv.certainty,
       is_countable: tv.is_countable,
@@ -1004,7 +1135,17 @@ function pickKoreanParticle(word, withBatchim, withoutBatchim) {
 }
 
 function buildContextGrounding(distortedBundle) {
-  const facts = distortedBundle.facts || [];
+  const rawFacts = distortedBundle.facts || [];
+  const facts = rawFacts.map((f) => {
+    if (f.applied_rules !== undefined && f.subject !== undefined) {
+      return f;
+    }
+    return toGroundedFact(f, {
+      applied_rules: f.applied_rules,
+      bundle_notes: f.bundle_notes,
+      rumor: f.rumor,
+    });
+  });
   return {
     dataOnly: {
       info_id: distortedBundle.info_id,
@@ -1062,10 +1203,47 @@ function mockLLMGenerate(systemPrompt, groundedContext, persona) {
   ].join("\n");
 }
 
+function resolveLlmAdapter() {
+  if (typeof window !== "undefined" && window.LlmAdapter) return window.LlmAdapter;
+  if (typeof globalThis !== "undefined" && globalThis.LlmAdapter) return globalThis.LlmAdapter;
+  return null;
+}
+
 function generateNPCDialogue(distortedFactsBundle, npcPersona, bundleContext) {
   const systemPrompt = createSoftGuardrailPrompt(npcPersona);
   const context = buildContextGrounding(distortedFactsBundle);
-  context.bundleContext = bundleContext || { hasContradiction: false, notes: [] };
+  const bundleCtx = bundleContext || { hasContradiction: false, notes: [] };
+  context.bundleContext = bundleCtx;
+
+  const adapter = resolveLlmAdapter();
+  const llmParams = { systemPrompt, groundedContext: context, persona: npcPersona, bundleContext: bundleCtx };
+
+  if (adapter && adapter.isLive && adapter.isLive()) {
+    const placeholder = adapter.mockGenerate(llmParams);
+    return {
+      systemPrompt,
+      context,
+      finalSpeech: placeholder.finalSpeech,
+      engineData: context.dataOnly,
+      npcSpeech: placeholder.npcSpeech,
+      llmProvider: "pending",
+      llmPending: true,
+    };
+  }
+
+  if (adapter && typeof adapter.generateSync === "function") {
+    const speechOut = adapter.generateSync(llmParams);
+    return {
+      systemPrompt,
+      context,
+      finalSpeech: speechOut.finalSpeech,
+      engineData: context.dataOnly,
+      npcSpeech: speechOut.npcSpeech,
+      llmProvider: speechOut.provider || "mock",
+      llmPending: false,
+    };
+  }
+
   const finalSpeech = mockLLMGenerate(systemPrompt, context, npcPersona);
   return {
     systemPrompt,
@@ -1073,6 +1251,8 @@ function generateNPCDialogue(distortedFactsBundle, npcPersona, bundleContext) {
     finalSpeech,
     engineData: context.dataOnly,
     npcSpeech: finalSpeech.split("[NPC Speech]\n")[1] || finalSpeech,
+    llmProvider: "mock",
+    llmPending: false,
   };
 }
 
@@ -1144,76 +1324,70 @@ function compareWithGroundTruth(interpretedFacts, groundTruthFacts, options) {
   return { matches, score: Number(avg.toFixed(2)), hit: null, total: interpretedFacts.length };
 }
 
-function getScenario(overrides) {
+function getScenario(overrides = {}) {
   const key = String(overrides.sessionKey || "default");
   if (overrides.persistSession) {
     if (!SESSION_STORE.has(key)) {
-      SESSION_STORE.set(key, createBaseScenario());
+      SESSION_STORE.set(key, createBaseScenario(overrides));
     }
     return SESSION_STORE.get(key);
   }
-  return createBaseScenario();
+  return createBaseScenario(overrides);
 }
 
-function createBaseScenario() {
+function createBaseScenario(overrides = {}) {
+  const senderKey = overrides.senderProfileKey || "guard";
+  const receiverKey = overrides.receiverProfileKey || "merchant";
+  const sender = overrides.usePlayerAsSender
+    ? createPlayerActor()
+    : createNpcFromProfile(senderKey);
+  const receiver = createNpcFromProfile(receiverKey);
+  const trust = resolveTrustToReceiver(sender, receiver, receiverKey, overrides);
+  sender.setTrustLevel(receiver.id, trust);
+
+  const playerName = getProfileRegistry().player.displayName;
   const info = new InfoAtom({
     info_id: "INF_001",
     truth_value: {
       subject: "wolf",
       action: "move",
       target: "north gate",
+      object: "",
       quantity: 3,
       is_factual: true,
       certainty: 1.0,
       facts: [],
     },
     metadata: {
-      origin: "Scout_A",
-      source: "Scout_A",
+      origin: overrides.usePlayerAsSender ? playerName : sender.name,
+      source: overrides.usePlayerAsSender ? playerName : sender.name,
       creation_tick: 1250,
     },
   });
-
-  const sender = new NPC({
-    id: "NPC_A",
-    name: "Rogan",
-    persona: "fearful_guard",
-    stats: {
-      fear: 0.82,
-      hostility: 0.62,
-      trust: 0.55,
-      credulity: 0.2,
-    },
-    reputation: {
-      촌장: 0.85,
-      상인: 0.4,
-    },
-  });
-
-  const receiver = new NPC({
-    id: "NPC_B",
-    name: "Mira",
-    persona: "cynical_merchant",
-    stats: {
-      fear: 0.33,
-      hostility: 0.28,
-      trust: 0.65,
-      credulity: 0.86,
-    },
-    reputation: {
-      촌장: 0.7,
-      상인: 0.55,
-    },
-  });
-
-  sender.setTrustLevel(receiver.id, 0.74);
-  receiver.setTrustLevel(sender.id, 0.61);
 
   return { info, sender, receiver };
 }
 
 function executeScenario(overrides = {}) {
-  const { info, sender, receiver } = getScenario(overrides);
+  let { info, sender, receiver } = getScenario(overrides);
+
+  if (overrides.usePlayerAsSender) {
+    const receiverKey = overrides.receiverProfileKey || "merchant";
+    sender = createPlayerActor();
+    receiver = createNpcFromProfile(receiverKey);
+    const trust = resolveTrustToReceiver(sender, receiver, receiverKey, overrides);
+    sender.setTrustLevel(receiver.id, trust);
+    const playerName = getProfileRegistry().player.displayName;
+    info.metadata.origin = playerName;
+    info.metadata.source = playerName;
+  } else if (overrides.receiverProfileKey || overrides.senderProfileKey) {
+    const receiverKey = overrides.receiverProfileKey || receiver.profileKey || "merchant";
+    const senderKey = overrides.senderProfileKey || sender.profileKey || "guard";
+    sender = createNpcFromProfile(senderKey);
+    receiver = createNpcFromProfile(receiverKey);
+    const trust = resolveTrustToReceiver(sender, receiver, receiverKey, overrides);
+    sender.setTrustLevel(receiver.id, trust);
+  }
 
   if (overrides.infoTruthValue && typeof overrides.infoTruthValue === "object") {
     Object.assign(info.truth_value, overrides.infoTruthValue);
@@ -1228,6 +1402,7 @@ function executeScenario(overrides = {}) {
       subject: primary.subject,
       action: primary.action,
       target: primary.target,
+      object: primary.object || "",
       quantity: primary.quantity,
       certainty: primary.certainty,
       is_countable: primary.is_countable,
@@ -1273,20 +1448,15 @@ function executeScenario(overrides = {}) {
 
   let dialogue = null;
   if (!propagation.blocked && propagation.interpretedFacts.length) {
-    const interpretedFacts = propagation.interpretedFacts.map((item) => {
-      const tv = item.truth_value;
-      return {
-        fact_id: item.info_id,
-        subject: tv.subject,
-        action: tv.action,
-        target: tv.target,
-        quantity: tv.quantity,
-        certainty: tv.certainty,
-        is_countable: tv.is_countable,
-        action_type: tv.action_type,
+    const interpretedFacts = propagation.interpretedFacts.map((item) =>
+      toGroundedFact(item.truth_value, {
         applied_rules: item.metadata.applied_rules || [],
         bundle_notes: item.metadata.bundle_notes || [],
-      };
+        rumor: item.metadata.rumor,
+      })
+    );
+    interpretedFacts.forEach((f, i) => {
+      f.fact_id = propagation.interpretedFacts[i].info_id;
     });
     dialogue = generateNPCDialogue(
       {
@@ -1332,6 +1502,11 @@ window.QuestSystem = {
   generateNPCDialogue,
   executeScenario,
   getScenario,
+  getProfileRegistry,
+  registerProfiles,
+  createNpcFromProfile,
+  createPlayerActor,
+  toGroundedFact,
   clearSession: (key) => SESSION_STORE.delete(String(key || "default")),
   DEFAULTS,
   PERSONA_DISTORTION_PROFILES,
