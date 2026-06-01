@@ -67,6 +67,10 @@ int main() {
     melee.maxRange = 70.0f;
     melee.comboHits = 3;
     melee.comboInterval = 0.12f;
+    // BUGFIX #5: the active window must cover all combo strikes. The 3 strikes
+    // land at t=0, 0.12, 0.24s, so activeSeconds must be >= comboInterval *
+    // (comboHits - 1) = 0.24s, otherwise the window closes before strike 3.
+    melee.activeSeconds = 0.30f;
     melee.cooldownSeconds = 1.5f;
     boss.addPattern(melee);
 
@@ -86,7 +90,12 @@ int main() {
     dash.attack.range = 50.0f;
     dash.attack.hitboxWidth = 45.0f;
     dash.attack.hitboxHeight = 45.0f;
-    dash.dashSpeed = 350.0f;
+    // BUGFIX #3/#6: the dash is selected from up to maxRange away, but it only
+    // hits while the boss is on top of the target. Travel = dashSpeed *
+    // activeSeconds; the old 350 * 0.20 = 70px could not close a 120-320px gap,
+    // so the lunge whiffed. Give it enough travel to actually reach the target.
+    dash.dashSpeed = 700.0f;
+    dash.activeSeconds = 0.40f; // 700 * 0.40 = 280px of travel
     dash.minRange = 120.0f;
     dash.maxRange = 320.0f;
     dash.cooldownSeconds = 2.0f;
@@ -119,7 +128,14 @@ int main() {
     const Vector2 bossFacing{1.0f, 0.0f}; // facing +x toward the player
 
     Player player(/*id*/ 99, Vector2{400.0f, 100.0f}, /*maxHealth*/ 120.0f);
-    player.setInvulnerabilityDuration(0.4f);
+    // BUGFIX #8: i-frames longer than the multi-hit cadence silently swallow
+    // hits. The combo re-arms every comboInterval (0.12s), but a 0.4s i-frame
+    // window blocks strikes 2 and 3, so a "3-hit combo" only dealt 1 hit. Set
+    // the i-frame shorter than the strike interval so each distinct strike
+    // registers. (The attacker's once-per-strike tracking still prevents a
+    // single strike from double-counting.) This is a balance knob, not a
+    // system change.
+    player.setInvulnerabilityDuration(0.08f);
     std::vector<ICombatant*> targets{ &player };
 
     const float dt = 0.1f;
