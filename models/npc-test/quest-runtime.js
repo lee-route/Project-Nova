@@ -178,6 +178,21 @@
     var interpreted = result.propagation.interpretedFacts || [];
     var completion = evaluateQuestCompletion(interpreted, quest);
 
+    var reputationResult = null;
+    if (completion.completed && global.ReputationSystem) {
+      var sessionKey = options.reputationSessionKey || options.sessionKey || "default";
+      var soft = exp.softEffects || {};
+      var effects = {
+        playerRepDelta: soft.playerRepDelta,
+        villageRepDelta: soft.villageRepDelta,
+        reputation: quest.outcome && quest.outcome.reputation,
+      };
+      reputationResult = global.ReputationSystem.applyQuestEffects(sessionKey, effects, {
+        questId: quest.id,
+        giverId: giver.giverId,
+      });
+    }
+
     return {
       questId: quest.id,
       giverId: giver.giverId,
@@ -187,6 +202,7 @@
       outcome: completion.completed ? quest.outcome : null,
       experience: exp,
       processSteps: giver.processSteps || [],
+      reputationResult: reputationResult,
     };
   }
 
@@ -204,6 +220,81 @@
     });
   }
 
+  /**
+   * Pick quest accept line from player rep tier toward this giver.
+   * giver.acceptDialogueByTier[tierId] → default → acceptDialogue
+   */
+  function resolveAcceptDialogue(giver, options) {
+    var opts = options || {};
+    var profileKey = giver.npcProfileRef || giver.giverId;
+    var sessionKey = opts.reputationSessionKey || opts.sessionKey || "default";
+    var Rep = global.ReputationSystem;
+    var repScore = 0.5;
+    var tier = { id: "neutral", label: "보통" };
+    if (Rep) {
+      var state = Rep.getState(sessionKey);
+      repScore = state.npcReputation[profileKey];
+      if (repScore === undefined) {
+        repScore = Rep.loadConfig().npcKeys?.[profileKey]?.default ?? 0.5;
+      }
+      tier = Rep.getTier(repScore);
+    }
+
+    var byTier = giver.acceptDialogueByTier;
+    var line = "";
+    var source = "acceptDialogue";
+    if (byTier && typeof byTier === "object") {
+      if (byTier[tier.id]) {
+        line = byTier[tier.id];
+        source = "acceptDialogueByTier:" + tier.id;
+      } else if (byTier.default) {
+        line = byTier.default;
+        source = "acceptDialogueByTier:default";
+      }
+    }
+    if (!line) {
+      line = giver.acceptDialogue || "";
+      source = "acceptDialogue";
+    }
+
+    var minTier = giver.minTierToAccept || null;
+    var canAccept = true;
+    var blockReason = "";
+    if (minTier && Rep) {
+      canAccept = Rep.meetsMinTier(tier.id, minTier);
+      if (!canAccept) {
+        blockReason =
+          "평판 " + tier.label + "(" + tier.id + ") < 필요 " + minTier;
+        if (byTier && byTier.refused) {
+          line = byTier.refused;
+          source = "acceptDialogueByTier:refused";
+        } else if (giver.refusedDialogue) {
+          line = giver.refusedDialogue;
+          source = "refusedDialogue";
+        }
+      }
+    }
+
+    return {
+      line: line,
+      source: source,
+      tier: tier,
+      repScore: Number(Number(repScore).toFixed(3)),
+      npcProfileRef: profileKey,
+      canAccept: canAccept,
+      blockReason: blockReason,
+      minTierToAccept: minTier,
+    };
+  }
+
+  function getAcceptDialogue(questId, giverId, options) {
+    var quest = getQuest(questId);
+    if (!quest) throw new Error("Quest not found: " + questId);
+    var giver = getQuestGiver(quest, giverId);
+    if (!giver) throw new Error("Quest giver not found: " + giverId);
+    return resolveAcceptDialogue(giver, options);
+  }
+
   global.QuestRuntime = {
     loadQuestCatalog: loadQuestCatalog,
     setQuestCatalog: setQuestCatalog,
@@ -214,6 +305,8 @@
     evaluateQuestCompletion: evaluateQuestCompletion,
     runQuestTurnIn: runQuestTurnIn,
     listQuestGiverOptions: listQuestGiverOptions,
+    resolveAcceptDialogue: resolveAcceptDialogue,
+    getAcceptDialogue: getAcceptDialogue,
     turnInProfileKey: turnInProfileKey,
   };
 })(typeof window !== "undefined" ? window : globalThis);

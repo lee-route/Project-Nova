@@ -6,6 +6,8 @@
   var compareQuestBtn = document.querySelector("#run-quest-compare");
   var outQuest = document.querySelector("#out-quest");
   var outQuestCompare = document.querySelector("#out-quest-compare");
+  var outAcceptDialogue = document.querySelector("#out-accept-dialogue");
+  var refreshAcceptBtn = document.querySelector("#refresh-accept-dialogue");
 
   var parserApi = {
     parseScenarioText: function (text) {
@@ -34,6 +36,29 @@
     return window.QuestRuntime.getQuestCatalog();
   }
 
+  function repSessionKey() {
+    return document.getElementById("rep-persist-session") &&
+      document.getElementById("rep-persist-session").checked
+      ? "ui-reputation"
+      : "default";
+  }
+
+  function refreshAcceptDialoguePreview() {
+    if (!outAcceptDialogue || !window.QuestRuntime || !giverSelect || !questSelect) return;
+    try {
+      var resolved = window.QuestRuntime.getAcceptDialogue(
+        questSelect.value,
+        giverSelect.value,
+        { sessionKey: repSessionKey(), reputationSessionKey: repSessionKey() }
+      );
+      outAcceptDialogue.textContent = JSON.stringify(resolved, null, 2);
+    } catch (err) {
+      outAcceptDialogue.textContent = "Error: " + (err.message || err);
+    }
+  }
+
+  window.refreshAcceptDialoguePreview = refreshAcceptDialoguePreview;
+
   function refreshGiverOptions() {
     if (!giverSelect || !questSelect || !window.QuestRuntime) return;
     var questId = questSelect.value;
@@ -45,6 +70,7 @@
       el.textContent = opt.label + " → " + opt.turnInProfileKey;
       giverSelect.appendChild(el);
     });
+    refreshAcceptDialoguePreview();
   }
 
   function initQuestUi() {
@@ -66,12 +92,15 @@
   }
 
   function runSingleGiver(giverId, scenarioText) {
+    var sessionKey = repSessionKey();
     return window.QuestRuntime.runQuestTurnIn({
       questId: questSelect.value,
       giverId: giverId,
       scenarioText: scenarioText,
       engine: window.QuestSystem,
       parser: parserApi,
+      sessionKey: sessionKey,
+      reputationSessionKey: sessionKey,
     });
   }
 
@@ -104,7 +133,12 @@
           };
         }),
         experienceFlavor: run.experience.expectedDistortionFlavor,
+        reputationResult: run.reputationResult,
+        playerReputation: run.engineResult.playerReputationSnapshot,
       });
+      }
+      if (typeof window.refreshReputationPanel === "function") {
+        window.refreshReputationPanel();
       }
 
       if (
@@ -166,6 +200,12 @@
 
   if (questSelect) {
     questSelect.addEventListener("change", refreshGiverOptions);
+  }
+  if (giverSelect) {
+    giverSelect.addEventListener("change", refreshAcceptDialoguePreview);
+  }
+  if (refreshAcceptBtn) {
+    refreshAcceptBtn.addEventListener("click", refreshAcceptDialoguePreview);
   }
   if (runQuestBtn) {
     runQuestBtn.addEventListener("click", onRunQuest);

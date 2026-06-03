@@ -8,6 +8,13 @@
       "fear": 0.1,
       "hostility": 0.1
     },
-    "defaultQuantityMode": "faithful"
+    "defaultQuantityMode": "faithful",
+    "initialVillageReputation": 50,
+    "initialNpcReputation": {
+      "mayor": 0.52,
+      "merchant": 0.48,
+      "guard": 0.5,
+      "scout": 0.55
+    }
   }
 }

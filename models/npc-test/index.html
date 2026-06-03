@@ -261,6 +261,21 @@
         <pre id="out-audit"></pre>
       </section>
 
+      <section class="panel" id="reputation-panel">
+        <h2>평판 (Reputation)</h2>
+        <p class="desc">
+          플레이어↔NPC 평판이 <code>defaultTrustToPlayer</code>에 반영됩니다. 퀘스트 완료 시
+          <code>playerRepDelta</code>가 적용됩니다.
+        </p>
+        <p id="rep-summary" class="desc">—</p>
+        <label class="checkbox-label">
+          세션 유지 (ui-reputation)
+          <input type="checkbox" id="rep-persist-session" checked />
+        </label>
+        <button type="button" id="rep-reset">Reset Reputation</button>
+        <pre id="out-reputation">로딩 중…</pre>
+      </section>
+
       <section class="panel quest-panel">
         <h2>Quest Playtest (P0)</h2>
         <p class="desc">
@@ -280,6 +295,11 @@
             <textarea id="quest-report-text" rows="2">북문에서 늑대 3마리가 탈출했다</textarea>
           </label>
         </div>
+        <div class="panel-head">
+          <h3>의뢰 대사 (평판 tier)</h3>
+        </div>
+        <pre id="out-accept-dialogue">의뢰인 선택 시 표시</pre>
+        <button type="button" id="refresh-accept-dialogue">Refresh Accept Dialogue</button>
         <button type="button" id="run-quest-turn-in">Run Quest Turn-In</button>
         <button type="button" id="run-quest-compare">Compare All Givers</button>
         <div class="panel-head">
@@ -342,6 +362,11 @@
       onerror="window.__appendInlineDebug('quest-system.js load failed')"
     ></script>
     <script
+      src="./reputation-system.js"
+      onload="window.__appendInlineDebug('reputation-system.js loaded')"
+      onerror="window.__appendInlineDebug('reputation-system.js load failed')"
+    ></script>
+    <script
       src="./llm-settings.js"
       onload="window.__appendInlineDebug('llm-settings.js loaded')"
       onerror="window.__appendInlineDebug('llm-settings.js load failed')"
@@ -380,6 +405,11 @@
       src="./quest-runtime.js"
       onload="window.__appendInlineDebug('quest-runtime.js loaded')"
       onerror="window.__appendInlineDebug('quest-runtime.js load failed')"
+    ></script>
+    <script
+      src="./reputation-runner.js"
+      onload="window.__appendInlineDebug('reputation-runner.js loaded')"
+      onerror="window.__appendInlineDebug('reputation-runner.js load failed')"
     ></script>
     <script
       src="./quest-runner.js"

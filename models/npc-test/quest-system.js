@@ -133,7 +133,16 @@ function resolveTrustToReceiver(sender, receiver, receiverProfileKey, overrides)
   }
   if (sender.isPlayer) {
     const prof = getProfileRegistry().npcs[receiverProfileKey];
-    return prof?.defaultTrustToPlayer ?? 0.7;
+    const base = prof?.defaultTrustToPlayer ?? 0.7;
+    if (typeof window !== "undefined" && window.ReputationSystem) {
+      const sessionKey = overrides.reputationSessionKey || overrides.sessionKey || "default";
+      return window.ReputationSystem.resolveTrustFromReputation(
+        receiverProfileKey,
+        base,
+        overrides.reputationSessionKey || overrides.sessionKey || "default"
+      );
+    }
+    return base;
   }
   return 0.74;
 }
@@ -1469,12 +1478,20 @@ function executeScenario(overrides = {}) {
     );
   }
 
+  let playerReputationSnapshot = null;
+  if (typeof window !== "undefined" && window.ReputationSystem && overrides.usePlayerAsSender) {
+    playerReputationSnapshot = window.ReputationSystem.snapshot(
+      overrides.reputationSessionKey || overrides.sessionKey || "default"
+    );
+  }
+
   return {
     baseInfo: info,
     sender,
     receiver,
     propagation,
     dialogue,
+    playerReputationSnapshot,
     knowledgeBaseSnapshot: overrides.persistSession
       ? receiver.knowledgeBase.listWithDecay(currentTick)
       : receiver.knowledgeBase.list(),

@@ -7,6 +7,12 @@
     "lastUpdated": "2026-05-27",
     "npcDataFile": "npcs.json",
     "playerDataFile": "player-profile.json",
+    "reputationConfigFile": "reputation-config.json",
+    "reputationNotes": [
+      "NPC 주제별 reputation(늑대·촌장 등) = quest-system NPC.reputation → 왜곡 엔진",
+      "플레이어↔NPC 평판 = reputation-system → defaultTrustToPlayer 보정",
+      "퀘스트 완료 시 experience.softEffects.playerRepDelta 적용"
+    ],
     "editorNotes": [
       "outcome 은 모든 의뢰인·경로에서 동일 (보상·스토리 플래그)",
       "questGivers[].processSteps 로 '과정' 차별화 (장소·대사·중간 목표)",
@@ -124,6 +130,16 @@
           "label": "촌장의 의뢰로 처리한다",
           "npcProfileRef": "mayor",
           "acceptDialogue": "공식적으로 처리하자. 회관부터 시작하게.",
+          "minTierToAccept": "wary",
+          "refusedDialogue": "지금은 네 이름을 올리기 어렵네. 마을 신뢰부터 쌓고 오게.",
+          "acceptDialogueByTier": {
+            "default": "공식적으로 처리하자. 회관부터 시작하게.",
+            "wary": "또 일인가… 알겠네. 이번에도 공식 절차대로 하지.",
+            "neutral": "공식적으로 처리하자. 회관부터 시작하게.",
+            "friendly": "자네라면 믿을 만하지. 회관에서 브리핑하겠네.",
+            "trusted": "마을을 부탁하네. 필요한 권한은 내가 열어 두겠네.",
+            "refused": "지금은 네 이름을 올리기 어렵네. 마을 신뢰부터 쌓고 오게."
+          },
           "uiHint": "절차가 길지만 소식이 덜 과장된다.",
 
           "processSteps": [
@@ -191,6 +207,13 @@
           "label": "상인의 의뢰로 처리한다",
           "npcProfileRef": "merchant",
           "acceptDialogue": "시장이 시끄러워지기 전에 움직이자. 손님들 귀는 예민하거든.",
+          "acceptDialogueByTier": {
+            "default": "시장이 시끄러워지기 전에 움직이자. 손님들 귀는 예민하거든.",
+            "wary": "또 손해 보는 일이야? …빨리 끝내, 시장이 떠들면 안 되니까.",
+            "neutral": "시장이 시끄러워지기 전에 움직이자. 손님들 귀는 예민하거든.",
+            "friendly": "네가 오면 말이 통하지. 시장 쪽은 내가 막아 볼게.",
+            "trusted": "좋아, 네 말이면 상인들도 안심하지. 바로 움직이자."
+          },
           "uiHint": "과정이 빠르지만 소문이 시장에 퍼질 수 있다.",
 
           "processSteps": [
@@ -257,6 +280,13 @@
           "label": "경비의 의뢰로 처리한다",
           "npcProfileRef": "guard",
           "acceptDialogue": "말보다 현장이 먼저다. 북문으로 와.",
+          "acceptDialogueByTier": {
+            "default": "말보다 현장이 먼저다. 북문으로 와.",
+            "wary": "민간인은 북문에 가까이 오지 마… …알겠어, 짧게만 처리해.",
+            "neutral": "말보다 현장이 먼저다. 북문으로 와.",
+            "friendly": "네가 와 주면 다행이야. 북문 쪽은 바로 안내하지.",
+            "trusted": "믿고 맡긴다. 현장 보고는 네 눈이 가장 정확하더군."
+          },
           "uiHint": "현장 중심. 경계 강화되지만 수량이 과장될 수 있다.",
 
           "processSteps": [
