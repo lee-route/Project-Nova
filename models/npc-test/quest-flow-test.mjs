@@ -27,7 +27,7 @@ function load() {
     player: JSON.parse(read("player-profile.json")).player,
   });
   vm.runInContext(read("quest-game-state.js"), ctx, { filename: "quest-game-state.js" });
-  vm.runInContext(read("app.js"), ctx, { filename: "app.js" });
+  vm.runInContext(read("npc-parser.js"), ctx, { filename: "npc-parser.js" });
   vm.runInContext(read("quest-runtime.js"), ctx, { filename: "quest-runtime.js" });
   sandbox.window.QuestRuntime.setQuestCatalog(JSON.parse(read("quests-draft.json")));
   return {

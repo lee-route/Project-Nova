@@ -19,7 +19,7 @@ function loadEngine() {
   sandbox.window = sandbox;
   const ctx = vm.createContext(sandbox);
   const read = (f) => fs.readFileSync(path.join(__dirname, f), "utf8");
-  for (const f of ["dictionaries.js", "quest-system.js", "app.js"]) {
+  for (const f of ["dictionaries.js", "npc-parser.js", "quest-system.js"]) {
     vm.runInContext(read(f), ctx, { filename: f });
   }
   const player = JSON.parse(read("player-profile.json"));

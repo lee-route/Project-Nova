@@ -1,42 +1,165 @@
 {
-  "version": 1,
-  "note": "언리얼 브릿지 미구현. 동일 계약으로 HTTP/Blueprint 연동 시 참고.",
-  "primaryQuestId": "quest_abandoned_cargo",
-  "endpoints": {
-    "getAcceptDialogue": {
-      "in": { "questId": "string", "giverId": "guard_timid|merchant_greedy|scholar_alric", "sessionKey": "string" },
-      "out": { "line": "string", "canAccept": "boolean", "tier": "object", "source": "string" }
-    },
-    "runQuestTurnIn": {
-      "in": {
-        "questId": "string",
-        "giverId": "string",
-        "scenarioText": "string",
-        "sessionKey": "string",
-        "reputationSessionKey": "string"
-      },
-      "out": {
-        "completion": { "completed": "boolean", "matches": "array" },
-        "outcomeBranch": { "branchId": "authority_path|black_market_path|fallback", "metrics": { "quantity": "number", "certainty": "number" } },
-        "outcome": {
-          "rewards": { "gold": "number", "xp": "number" },
-          "worldFlags": { "is_cargo_secured": "boolean", "cargo_destination": "authority|black_market|unknown" },
-          "playerRepDelta": "object"
-        }
-      }
-    },
-    "runQuestFlow": {
-      "in": "acceptQuest + advanceProcessStep × N + scenarioText on fact_input",
-      "out": { "ok": "boolean", "steps": "array", "gameState": "QuestGameState snapshot" }
+  "version": 2,
+  "service": "project-nova-npc-api",
+  "note": "HTTP 구현: npc-api-server.mjs. UE 연동 가이드: ue-bridge/INTEGRATION.md",
+  "bootSequence": [
+    "load dictionaries.js → NpcLexicon",
+    "load npc-parser.js → NpcParser",
+    "load quest-system.js + registerProfiles(npcs.json, player-profile.json)",
+    "ReputationSystem.setConfig(reputation-config.json)",
+    "QuestRuntime.setQuestCatalog(quests-draft.json)"
+  ],
+  "authoritativeSave": "unreal_engine",
+  "serverSession": "in_memory_only",
+  "v1Policy": {
+    "outcomeSource": "interpretedFacts_only",
+    "knowledgeLayers": "diagnostic_only",
+    "llm": "excluded",
+    "travelInteract": "unreal_engine_local",
+    "processStepsFullFlow": "not_exposed_in_v1"
+  },
+  "errorShape": {
+    "ok": false,
+    "error": {
+      "code": "string",
+      "message": "string",
+      "details": "object|null"
     }
   },
-  "gameStateSnapshot": {
-    "gold": 0,
-    "xp": 0,
-    "villageReputation": 50,
-    "worldFlags": {},
-    "activeQuest": null,
-    "questHistory": []
+  "primaryQuestId": "quest_abandoned_cargo",
+  "baseUrl": "http://127.0.0.1:8787",
+  "endpoints": {
+    "GET /health": {
+      "out": { "ok": true, "llmEnabled": false, "v1Endpoints": "array" }
+    },
+    "GET /v1/quest/meta": {
+      "in": { "questId": "query (optional, default quest_abandoned_cargo)" },
+      "out": {
+        "ok": true,
+        "primaryQuestId": "quest_abandoned_cargo",
+        "questId": "string",
+        "title": "string|null",
+        "givers": "array (giverId, turnInProfileKey, distortion profile)",
+        "turnInNote": "giverId = quest giver; turn-in receiver = turnInProfileKey",
+        "exampleReports": "object"
+      }
+    },
+    "POST /v1/parse": {
+      "in": { "scenarioText": "string" },
+      "out": {
+        "ok": true,
+        "facts": "FactInput[]",
+        "parsed": "object",
+        "primary": "object"
+      }
+    },
+    "POST /v1/quest/turn-in": {
+      "in": {
+        "questId": "string",
+        "giverId": "guard_timid|merchant_greedy|scholar_alric",
+        "scenarioText": "string",
+        "facts": "FactInput[] (optional if scenarioText)",
+        "sessionKey": "string",
+        "reputationSessionKey": "string (optional)",
+        "quantityMode": "faithful|dramatic (optional)",
+        "allowPartialTrust": "boolean (optional)",
+        "persistSession": "boolean (optional, engine KB)",
+        "worldTruthFacts": "FactInput[] (optional, investigation seed)",
+        "applyGameState": "boolean (default true, server RAM demo)",
+        "includeKnowledgeAudit": "boolean (default true)"
+      },
+      "out": {
+        "ok": true,
+        "llmExcluded": true,
+        "v1OutcomeSource": "interpretedFacts_only",
+        "facts": "FactInput[]",
+        "propagation": {
+          "blocked": "boolean",
+          "reason": "string|null",
+          "interpretedFacts": "InterpretedFact[]",
+          "partialTrust": "boolean",
+          "quantityMode": "string"
+        },
+        "completion": { "completed": "boolean", "matches": "array" },
+        "outcomeBranch": { "branchId": "authority_path|black_market_path|fallback", "metrics": "object" },
+        "outcome": {
+          "rewards": { "gold": "number", "xp": "number" },
+          "worldFlags": {
+            "is_cargo_secured": "boolean",
+            "cargo_destination": "authority|black_market|unknown"
+          },
+          "playerRepDelta": "object"
+        },
+        "knowledgeAudit": {
+          "affectsOutcome": false,
+          "v1Policy": "diagnostic_only",
+          "worldCompare": "object|null",
+          "unsupportedClaims": "object|null"
+        },
+        "gameState": "QuestGameState snapshot (server demo; UE should use outcome.*)"
+      }
+    },
+    "GET /v1/quest/accept-dialogue": {
+      "in": { "questId": "query", "giverId": "query", "sessionKey": "query" },
+      "out": { "ok": true, "accept": { "line": "string", "canAccept": "boolean", "tier": "object" } }
+    },
+    "GET /v1/session/snapshot": {
+      "in": { "sessionKey": "query" },
+      "out": { "ok": true, "snapshot": { "gameState", "reputation", "gameClock", "knowledgeLayers", "authoritativeSave": "unreal_engine" } }
+    },
+    "POST /v1/session/import": {
+      "in": { "sessionKey": "string", "snapshot": "object" },
+      "out": { "ok": true, "snapshot": "object" }
+    }
+  },
+  "deferredV2": [
+    "POST /v1/dialogue (LLM)",
+    "POST /v1/quest/flow (full processSteps)",
+    "deception affects outcome / reputation penalty"
+  ],
+  "schemas": {
+    "FactInput": {
+      "fact_id": "string",
+      "subject": "string",
+      "action": "string",
+      "target": "string",
+      "quantity": "number",
+      "certainty": "number",
+      "is_countable": "boolean",
+      "action_type": "string",
+      "rumor": "boolean"
+    },
+    "InterpretedFact": {
+      "info_id": "string",
+      "truth_value": "object",
+      "metadata": {
+        "source": "string",
+        "source_chain": "string[]",
+        "hop_depth": "number",
+        "applied_rules": "string[]"
+      }
+    }
+  },
+  "examples": {
+    "turnInRequest": {
+      "questId": "quest_abandoned_cargo",
+      "giverId": "scholar_alric",
+      "scenarioText": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+      "sessionKey": "ue-player-1"
+    },
+    "turnInResponseHigh": {
+      "ok": true,
+      "outcomeBranch": { "branchId": "authority_path" },
+      "outcome": { "rewards": { "gold": 150 }, "worldFlags": { "cargo_destination": "authority" } }
+    },
+    "turnInResponseLow": {
+      "outcomeBranch": { "branchId": "black_market_path" },
+      "outcome": { "rewards": { "gold": 300 }, "worldFlags": { "cargo_destination": "black_market" } }
+    },
+    "errorExample": {
+      "ok": false,
+      "error": { "code": "missing_giver_id", "message": "giverId required", "details": null }
+    }
   },
   "exampleReportHigh": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
   "exampleReportLow": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 다섯 개가 들어 있다"

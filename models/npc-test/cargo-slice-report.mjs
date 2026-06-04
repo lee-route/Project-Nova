@@ -31,7 +31,7 @@ function loadRuntime() {
     npcs: JSON.parse(read("npcs.json")).npcs,
     player: player.player,
   });
-  vm.runInContext(read("app.js"), ctx, { filename: "app.js" });
+  vm.runInContext(read("npc-parser.js"), ctx, { filename: "npc-parser.js" });
   vm.runInContext(read("quest-runtime.js"), ctx, { filename: "quest-runtime.js" });
   sandbox.window.QuestRuntime.setQuestCatalog(JSON.parse(read("quests-draft.json")));
   return {

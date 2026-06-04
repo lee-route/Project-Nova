@@ -6,17 +6,27 @@
 
 ## 빠른 시작
 
-```bash
-cd models/npc-test
+```powershell
+cd models\npc-test
 node run-all-tests.mjs
+.\run-api.ps1            # API 서버 (8787) — npm 불필요
+.\run-api-smoke.ps1      # HTTP 연동 확인 (서버 실행 중)
 ```
 
+npm 사용 가능 시: `npm run api`, `npm run api:smoke`, `npm run api:e2e`
+
+상세: [API-QUICKSTART.md](API-QUICKSTART.md)
+
 브라우저: `index.html` 을 정적 서버로 연 뒤 Quest Playtest 패널 사용.
+
+언리얼: [ue-bridge/INTEGRATION.md](ue-bridge/INTEGRATION.md) — **세이브는 UE**, API는 turn-in·분기만.
 
 ## 주요 파일
 
 | 파일 | 역할 |
 |------|------|
+| `npc-parser.js` | 한국어 시나리오 → `facts[]` (Node/UE 서버용, DOM 없음) |
+| `dictionaries.js` | 파서·분류 lexicon (`NpcLexicon`) |
 | `quest-system.js` | 왜곡·전파·KB |
 | `quest-runtime.js` | 퀘스트 turn-in, flow, processSteps |
 | `quest-game-state.js` | gold / worldFlags / history (로컬) |
@@ -24,7 +34,9 @@ node run-all-tests.mjs
 | `npcs.json` | NPC 왜곡 프로필 |
 | `player-profile.json` | 플레이어 + 초기 평판 |
 | `reputation-config.json` | tier 의뢰 대사 |
-| `GAME-API.json` | 향후 UE 연동용 JSON 계약 (브릿지 없음) |
+| `npc-api-server.mjs` | HTTP API v1 (`npm run api`) |
+| `GAME-API.json` | API v2 스펙 (facts, propagation, errors) |
+| `ue-bridge/INTEGRATION.md` | UE HTTP 연동 절차 |
 
 ## 퀘스트 플레이 (브라우저)
 

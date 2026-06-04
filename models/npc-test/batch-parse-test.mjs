@@ -27,11 +27,11 @@ function loadParser() {
   sandbox.window = sandbox;
   const ctx = vm.createContext(sandbox);
   const dictSrc = fs.readFileSync(path.join(__dirname, "dictionaries.js"), "utf8");
-  const appSrc = fs.readFileSync(path.join(__dirname, "app.js"), "utf8");
+  const parserSrc = fs.readFileSync(path.join(__dirname, "npc-parser.js"), "utf8");
   vm.runInContext(dictSrc, ctx, { filename: "dictionaries.js" });
-  vm.runInContext(appSrc, ctx, { filename: "app.js" });
+  vm.runInContext(parserSrc, ctx, { filename: "npc-parser.js" });
   if (!sandbox.window.NpcParser) {
-    throw new Error("NpcParser not exported after app.js load");
+    throw new Error("NpcParser not exported after npc-parser.js load");
   }
   const parser = sandbox.window.NpcParser;
   if (!parser) throw new Error("NpcParser not exported");

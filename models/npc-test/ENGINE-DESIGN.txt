@@ -1,58 +1,222 @@
 ================================================================================
-  Project-Nova / models/npc-test — 정보·퀘스트 엔진 설계 정리
+  Project-Nova / models/npc-test — 엔진·API 설계 (ENGINE-DESIGN)
+  갱신: 2026-05-27
+  진행·마일스톤: PROGRESS.txt
+  HTTP 계약 JSON: GAME-API.json
 ================================================================================
 
-1. 이것이 무엇인가
+
+1. 시스템 개요
 --------------------------------------------------------------------------------
-- 브라우저 + Node 프로토타입. 결정론 왜곡 엔진 + quest_abandoned_cargo.
-- LLM은 interpretedFacts JSON만으로 대사 연출.
+  브라우저 + Node + HTTP 프로토타입.
+  Unreal Engine(nova/)은 별도 — v1은 로컬 API 서버에 HTTP로 붙인다.
+
+  목표: 동일 입력·동일 NPC 스탯 → 동일 interpretedFacts → 동일 퀘스트 분기.
 
 
-2. 모듈
+2. 설계 원칙 (불변)
 --------------------------------------------------------------------------------
-  quest-system.js       왜곡·전파·KB·executeScenario·source_chain 규칙
-  game-clock.js         세션 tick / day·hour (UE GameTimeTick 대체)
-  knowledge-layers.js   WorldTruth + PlayerKnowledge
-  llm-fact-anchor.js    LLM 대사 vs Grounded DATA 검증
-  quest-runtime.js      퀘스트·acceptQuest·advanceProcessStep·runQuestFlow
-  quest-game-state.js   gold/xp/worldFlags/questHistory (로컬, UE 전)
-  app.js                NpcParser
-  quests-draft.json     정식 퀘스트
-  npcs.json (v3)        주제별 reputation + persona
-  player-profile.json   플레이어 전파 + initialNpcReputation
-  reputation-config.json  tier 의뢰 대사
-  GAME-API.json         향후 UE용 JSON 계약 (브릿지 없음)
-  README.md             사용법
+  (1) 결정론: 동일 facts + 동일 관계·평판·quantityMode → 동일 applied_rules
+  (2) NPC 진실: LLM·퀘스트 판정은 interpretedFacts 만 사용 (원문·parser fact 직접 금지)
+  (3) LLM: 말투·연출만; [Grounded DATA] 밖 사실 생성 금지
+  (4) 퀘스트 분기: quests-draft outcomes[] (authority / black_market / fallback)
+  (5) 평판 이중 구조:
+        - 주제별 reputation (npcs.json) → 왜곡 엔진
+        - 플레이어↔NPC reputation (reputation-config) → tier 대사·trust 보정
 
 
-3. 퀘스트 플로우 (로컬 완료)
+3. 데이터 파이프라인
 --------------------------------------------------------------------------------
-  acceptQuest → dialogue → travel → fact_input(runQuestTurnIn)
-  → outcome 분기 → QuestGameState.applyTurnInOutcome
 
-  의뢰인 neutral: giver.acceptDialogue (3색 브리핑)
-  processSteps[].npcLine = 의뢰 시점 소문 연출
+  [플레이어 입력]
+       scenarioText (한국어)
+            │
+            ▼
+  npc-parser.js ──► facts[] (FactInput)
+            │
+            ▼
+  quest-system.executeScenario / propagateFactBundle
+    · 발신: 플레이어(usePlayerAsSender) 또는 NPC
+    · 수신: NPC (예: scholar_alric)
+    · distortInformation → reinterpretInfo
+    · source_chain / hop_depth 규칙 적용
+            │
+            ▼
+  interpretedFacts[]  ◄── 퀘스트·LLM·판정의 유일한 사실 소스
+            │
+            ├─► quest-runtime.evaluateQuestCompletion / pickOutcomeBranch
+            ├─► llm-adapter + LlmFactAnchor (연출만)
+            └─► knowledgeAudit (진단만, v1 outcome 무관)
 
 
-4. 지식·시간·앵커링 (프로토타입 완료)
+4. 모듈 맵
 --------------------------------------------------------------------------------
-  - GameClock: sessionKey별 tick, UI/executeScenario 동기화
-  - WorldTruth: GM/파서 시드 vs PlayerKnowledge 비교
-  - PlayerKnowledge: 플레이어 turn-in·수신 시 interpretedFacts 누적
-  - source_chain / hop_depth: 다단 전파 시 certainty·규칙(source_chain_*)
-  - LlmFactAnchor: mock/live 출력 수치·주어 검증 (실패 시 mock 폴백)
+
+  4.1 파서·사전
+    dictionaries.js     NpcLexicon (장소·행동 패턴·분류 키워드)
+    npc-parser.js       NpcParser — DOM 없음, Node/브라우저 공용
+    app.js              브라우저 UI·render·buildReadableDialogue 만
+
+  4.2 결정론 엔진
+    quest-system.js
+      InfoAtom, NPC, KnowledgeBase
+      distortInformation, reinterpretInfo, propagateFactBundle, propagateChain
+      applyBundleCoherence, executeScenario, toGroundedFact
+      compareWithGroundTruth (QA)
+
+  4.3 시간·지식 레이어
+    game-clock.js           sessionKey별 tick / day·hour
+    knowledge-layers.js     WorldTruth(객관), PlayerKnowledge(접촉 지식)
+    deception-audit.js      turn-in 보고 vs WorldTruth 비교 (진단)
+    session-snapshot.js       RAM 세션 export/import (dev; UE save 권위)
+
+  4.4 퀘스트·게임
+    quest-runtime.js        catalog, turn-in, accept, processSteps, flow
+    quest-game-state.js     gold, xp, worldFlags, questHistory (로컬 데모)
+    quests-draft.json       quest_abandoned_cargo
+
+  4.5 평판·프로필
+    reputation-system.js
+    npcs.json, player-profile.json, reputation-config.json
+    data-loader.js (브라우저 JSON 로드)
+
+  4.6 LLM
+    llm-adapter.js          mock / OpenAI / Anthropic
+    llm-fact-anchor.js      출력 수치·주어 검증
+    llm-mock-fallback.js    anchor 실패 시 persona·violation별 연출
+    llm-settings.js         브라우저 localStorage 설정
+
+  4.7 HTTP (Node)
+    api-bootstrap.mjs       vm 로드·registerProfiles·setQuestCatalog
+    npc-api-server.mjs      HTTP v1 엔드포인트
 
 
-5. 미구현 (의도)
+5. 지식 레이어 정책 (v1)
 --------------------------------------------------------------------------------
-  - 언리얼 C++/Blueprint/HTTP 브릿지
-  - 맵 이동·아이템·3D 대화 UI (UE 담당)
+
+  WorldTruth
+    - 조사 완료·GM 시드용 객관 사실
+    - turn-in 요청 시 worldTruthFacts 로 시드 가능
+
+  PlayerKnowledge
+    - 플레이어가 접한 interpreted 스냅샷 (direct / heard)
+    - turn-in 직전 audit 후 기록 (순서 보장)
+
+  knowledgeAudit (runQuestTurnIn 응답)
+    - affectsOutcome: false  (v1 고정)
+    - v1Policy: diagnostic_only
+    - 게임 gold·cargo_destination 은 interpretedFacts → outcomes[] 만 사용
+
+  API v2 예정: 기만 severity → reputation penalty, deception outcome 분기
 
 
-6. 테스트: node run-all-tests.mjs
+6. source_chain · hop_depth
 --------------------------------------------------------------------------------
-  distortion (11), integration (9), quest, reputation, accept-dialogue,
-  process-steps, profiles-sync, quest-flow,
-  knowledge-layers, source-chain, llm-anchoring
+  propagateFactBundle 시 prospective chain: […발신, 수신]
+  규칙 예: source_chain_secondhand, source_chain_multi_hop, source_chain_qty_doubt
+  toGroundedFact / LLM [Grounded DATA]에 source_chain, hop_depth 포함
+  propagateChain: hop마다 certainty decay, chain append
 
+
+7. LLM · 앵커링
+--------------------------------------------------------------------------------
+  입력: buildContextGrounding(interpretedFacts) → dataOnly JSON
+  mock: persona별 말투, facts 고정
+  live: LlmFactAnchor.validateSpeech → 실패 시 mock_fallback (facts 동일, 프레이밍만 변경)
+  v1 HTTP API: LLM 엔드포인트 없음 (404 not_in_v1)
+
+
+8. 퀘스트 플로우
+--------------------------------------------------------------------------------
+
+  8.1 로컬·브라우저 (전체)
+    acceptQuest → processSteps (dialogue → travel → fact_input)
+    fact_input 시 runQuestTurnIn
+    → QuestGameState.applyTurnInOutcome
+
+  8.2 travel / interact
+    quest-runtime: travel = "이동 완료" 스텁 문자열만
+    실제 맵·트리거·조사 결과 → UE 책임 (v1)
+
+  8.3 HTTP v1 (UE 권장 경로)
+    POST /v1/quest/turn-in 만으로 완료 판정·보상·worldFlags 산출
+    accept-dialogue는 GET /v1/quest/accept-dialogue (선택)
+
+
+9. HTTP API v1
+--------------------------------------------------------------------------------
+
+  기동:
+    node npc-api-server.mjs --port=8787
+
+  부트 (api-bootstrap.mjs):
+    dictionaries → npc-parser → quest-system
+    registerProfiles(npcs.json, player-profile.json)
+    ReputationSystem.setConfig(reputation-config.json)
+    QuestRuntime.setQuestCatalog(quests-draft.json)
+    + game-clock, knowledge-layers, deception-audit, session-snapshot
+
+  엔드포인트:
+    GET  /health
+    POST /v1/parse
+    POST /v1/quest/turn-in          ◄ UE 주력
+    GET  /v1/quest/accept-dialogue
+    GET  /v1/session/snapshot
+    POST /v1/session/import
+    *    /v1/dialogue, /v1/llm     → 404 (v2)
+
+  오류 형식:
+    { "ok": false, "error": { "code", "message", "details" } }
+
+  turn-in 응답 핵심 필드 (UE 반영):
+    completion.completed
+    outcomeBranch.branchId
+    outcome.rewards.gold
+    outcome.worldFlags.cargo_destination
+    propagation.interpretedFacts (디버그)
+    knowledgeAudit (판정 X)
+
+  authoritativeSave: unreal_engine
+  serverSession: in_memory_only
+
+  상세 스키마: GAME-API.json (version 2)
+  UE 절차: ue-bridge/INTEGRATION.md
+
+
+10. v1 vs v2 경계
+--------------------------------------------------------------------------------
+
+  v1 포함                          v2 이후
+  ─────────────────────────────────────────────────
+  parse, turn-in                   POST /v1/dialogue (LLM)
+  accept-dialogue                  POST /v1/quest/flow
+  session snapshot (dev)           기만 → outcome / rep
+  interpretedFacts 분기            WorldTruth → 필수 조사 게이트
+  knowledgeAudit 진단              서버 세이브 영속 (선택)
+
+  UE가 v1에서 담당:
+    이동·조사·3D 대사·세이브게임·시네마
+
+
+11. 테스트 (설계 관점)
+--------------------------------------------------------------------------------
+  결정론 회귀: distortion, integration, quest, source-chain
+  파서: npc-parser-test, batch-parse-quick (CI)
+  API: api-server-test (in-process handler)
+  지식·앵커: knowledge-layers, deception-audit, llm-anchoring
+
+  명령: node run-all-tests.mjs  (목록은 PROGRESS.txt §7)
+
+
+12. 의도적 미구현
+--------------------------------------------------------------------------------
+  - nova/ 언리얼 HTTP 클라이언트·Subsystem
+  - processSteps 맵 트리거 ↔ WorldTruth 자동 동기
+  - LLM을 퀘스트 실패/성공 판정에 사용
+  - 서버 재시작 후 세션 자동 복구 (UE import 책임)
+
+
+================================================================================
+  문서 역할: ENGINE-DESIGN = 구조·정책·파이프라인·API 계약
+            PROGRESS = 완료 목록·테스트·로드맵·체험 방법
 ================================================================================

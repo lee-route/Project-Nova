@@ -8,6 +8,9 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const suites = [
+  "npc-parser-test.mjs",
+  "deception-audit-test.mjs",
+  "api-server-test.mjs",
   "distortion-test.mjs",
   "integration-test.mjs",
   "quest-test.mjs",
@@ -19,6 +22,7 @@ const suites = [
   "knowledge-layers-test.mjs",
   "source-chain-test.mjs",
   "llm-anchoring-test.mjs",
+  "batch-parse-quick-test.mjs",
 ];
 
 let failed = 0;

@@ -18,9 +18,13 @@ export function loadTestEngine(dirname, extraFiles = []) {
   const core = [
     "game-clock.js",
     "knowledge-layers.js",
+    "deception-audit.js",
+    "session-snapshot.js",
     "llm-fact-anchor.js",
+    "llm-mock-fallback.js",
     "llm-adapter.js",
     "dictionaries.js",
+    "npc-parser.js",
     "quest-system.js",
     ...extraFiles,
   ];
@@ -37,6 +41,8 @@ export function loadTestEngine(dirname, extraFiles = []) {
     GameClock: sandbox.window.GameClock,
     WorldTruth: sandbox.window.WorldTruth,
     PlayerKnowledge: sandbox.window.PlayerKnowledge,
+    DeceptionAudit: sandbox.window.DeceptionAudit,
+    SessionSnapshot: sandbox.window.SessionSnapshot,
     LlmFactAnchor: sandbox.window.LlmFactAnchor,
     LlmAdapter: sandbox.window.LlmAdapter,
     parser: sandbox.window.NpcParser,

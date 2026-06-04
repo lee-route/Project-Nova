@@ -44,5 +44,34 @@ const mock = LlmAdapter.mockGenerate({
 });
 assert(mock.anchorValidation && mock.anchorValidation.ok !== false, "mock speech validates");
 
+const qtyStyle = LlmAdapter.pickFallbackStyle("fearful_guard", bad.violations);
+assert(qtyStyle === "fearful_guard_qty_safe", "quantity violation picks qty_safe style");
+
+const fb = LlmAdapter.mockGenerateFallback(
+  { systemPrompt: "test", groundedContext: ctx, persona: "calm_scholar", bundleContext: {} },
+  bad
+);
+assert(fb.provider === "mock_fallback", "fallback provider tag");
+assert(fb.fallbackStyle === "calm_scholar_qty_safe", "scholar qty fallback style");
+assert(fb.anchorValidation && fb.anchorValidation.usedFallback === true, "marks usedFallback");
+assert(
+  LlmFactAnchor.validateSpeech(fb.npcSpeech, ctx).ok === true,
+  "fallback speech passes anchor"
+);
+
+const scholarFb = LlmAdapter.mockGenerate({
+  systemPrompt: "test",
+  groundedContext: ctx,
+  persona: "calm_scholar",
+  forceFallbackStyle: "calm_scholar_qty_safe",
+});
+const hunterFb = LlmAdapter.mockGenerate({
+  systemPrompt: "test",
+  groundedContext: ctx,
+  persona: "hotblood_hunter",
+  forceFallbackStyle: "hotblood_hunter_qty_safe",
+});
+assert(scholarFb.npcSpeech !== hunterFb.npcSpeech, "persona fallback lines differ");
+
 console.log(failed ? "FAILED" : "llm-anchoring-test passed");
 process.exit(failed ? 1 : 0);

@@ -132,7 +132,58 @@
     return attachAnchorValidation(out, groundedContext, anchorOpts);
   }
 
+  function resolveMockFallback() {
+    return global.LlmMockFallback || null;
+  }
+
+  /**
+   * Anchor 실패 후 연출용 mock — facts는 그대로, 말투만 styleId에 따라 변경
+   */
+  function mockGenerateFallback(params, liveValidation) {
+    var systemPrompt = params.systemPrompt;
+    var groundedContext = params.groundedContext;
+    var persona = params.persona;
+    var bundleContext = params.bundleContext || {};
+    var facts = groundedContext.facts || [];
+    var fb = resolveMockFallback();
+    var violations = (liveValidation && liveValidation.violations) || [];
+    var styleId = fb ? fb.pickFallbackStyle(persona, violations) : String(persona || "neutral") + "_recover";
+    var speech = fb
+      ? fb.buildAnchoredFallbackSpeech(facts, persona, styleId, bundleContext)
+      : null;
+
+    if (!speech) {
+      return mockGenerate(params);
+    }
+
+    var out = wrapDialogueOutput(systemPrompt, groundedContext, speech, "mock_fallback");
+    out.fallbackStyle = styleId;
+    out.anchorValidation = {
+      ok: out.anchorValidation && out.anchorValidation.ok,
+      usedFallback: true,
+      fallbackStyle: styleId,
+      live: liveValidation || null,
+    };
+    return out;
+  }
+
   function mockGenerate(params) {
+    if (params && params.forceFallbackStyle) {
+      var fb = resolveMockFallback();
+      if (fb) {
+        var facts = (params.groundedContext && params.groundedContext.facts) || [];
+        var speech = fb.buildAnchoredFallbackSpeech(
+          facts,
+          params.persona,
+          params.forceFallbackStyle,
+          params.bundleContext || {}
+        );
+        var forced = wrapDialogueOutput(params.systemPrompt, params.groundedContext, speech, "mock");
+        forced.fallbackStyle = params.forceFallbackStyle;
+        return forced;
+      }
+    }
+
     var systemPrompt = params.systemPrompt;
     var groundedContext = params.groundedContext;
     var persona = params.persona;
@@ -266,13 +317,7 @@
       !wrapped.anchorValidation.ok &&
       params.strictAnchor !== false
     ) {
-      var fallback = mockGenerate(params);
-      fallback.anchorValidation = {
-        ok: false,
-        usedFallback: true,
-        live: wrapped.anchorValidation,
-      };
-      return fallback;
+      return mockGenerateFallback(params, wrapped.anchorValidation);
     }
     return wrapped;
   }
@@ -302,6 +347,7 @@
     d.finalSpeech = out.finalSpeech;
     d.npcSpeech = out.npcSpeech;
     d.llmProvider = out.provider;
+    d.fallbackStyle = out.fallbackStyle || null;
     d.anchorValidation = out.anchorValidation;
     engineResult.anchorValidation = out.anchorValidation;
     return engineResult;
@@ -315,6 +361,11 @@
     generateSync: generateSync,
     generateAsync: generateAsync,
     mockGenerate: mockGenerate,
+    mockGenerateFallback: mockGenerateFallback,
+    pickFallbackStyle: function (persona, violations) {
+      var fb = resolveMockFallback();
+      return fb ? fb.pickFallbackStyle(persona, violations) : "neutral_recover";
+    },
     enrichDialogueResult: enrichDialogueResult,
     validateSpeech: function (speech, ctx, opts) {
       var anchor = resolveAnchor();

@@ -226,6 +226,9 @@
         ? options.allowPartialTrust
         : propOpts.allowPartialTrust !== false;
 
+    var sessionKey = options.reputationSessionKey || options.sessionKey || "quest-" + quest.id + "-" + giver.giverId;
+    var recordPkb = options.recordPlayerKnowledge !== false;
+
     var result = engine.executeScenario({
       facts: facts,
       usePlayerAsSender: true,
@@ -233,17 +236,18 @@
       quantityMode: quantityMode,
       allowPartialTrust: allowPartialTrust,
       persistSession: Boolean(options.persistSession),
-      sessionKey: options.sessionKey || "quest-" + quest.id + "-" + giver.giverId,
+      sessionKey: sessionKey,
       currentTick:
         options.currentTick != null
           ? options.currentTick
           : global.GameClock
-            ? global.GameClock.resolveTick({ sessionKey: options.sessionKey || "quest-default" })
+            ? global.GameClock.resolveTick({ sessionKey: sessionKey })
             : 1000,
-      recordPlayerKnowledge: options.recordPlayerKnowledge !== false,
+      recordPlayerKnowledge: false,
       seedWorldTruthFromFacts: Boolean(options.seedWorldTruthFromFacts),
       advanceTicksAfterPropagate: options.advanceTicksAfterPropagate || 1,
       trustLevel: options.trustLevel,
+      questId: quest.id,
     });
 
     var interpreted = result.propagation.interpretedFacts || [];
@@ -252,7 +256,6 @@
 
     var reputationResult = null;
     if (completion.completed && global.ReputationSystem && outcomeBranch) {
-      var sessionKey = options.reputationSessionKey || options.sessionKey || "default";
       var branchEffects = outcomeBranch.effects || {};
       reputationResult = global.ReputationSystem.applyQuestEffects(sessionKey, branchEffects, {
         questId: quest.id,
@@ -261,17 +264,57 @@
       });
     }
 
+    var knowledgeAudit = null;
+    if (global.DeceptionAudit && options.includeKnowledgeAudit !== false) {
+      knowledgeAudit = global.DeceptionAudit.auditTurnInReport(sessionKey, facts, {
+        worldTruthFacts: options.worldTruthFacts || options.investigationFacts,
+        tick: result.gameClockSnapshot && result.gameClockSnapshot.tick,
+      });
+    }
+
+    if (recordPkb && global.PlayerKnowledge && !result.propagation.blocked) {
+      global.PlayerKnowledge.recordFromPropagation(
+        sessionKey,
+        { propagation: result.propagation, sender: result.sender, receiver: result.receiver },
+        { tick: result.gameClockSnapshot && result.gameClockSnapshot.tick, usePlayerAsSender: true, questId: quest.id }
+      );
+    }
+
+    var gameStateApply = null;
+    if (global.QuestGameState && options.applyGameState !== false && completion.completed) {
+      gameStateApply = global.QuestGameState.applyTurnInOutcome(sessionKey, {
+        questId: quest.id,
+        giverId: giver.giverId,
+        completion: completion,
+        outcome: outcomeBranch ? outcomeBranch.effects : null,
+        outcomeBranch: outcomeBranch,
+        reputationResult: reputationResult,
+      });
+    }
+
     return {
       questId: quest.id,
       giverId: giver.giverId,
       turnInProfileKey: recvKey,
+      facts: facts,
       engineResult: result,
+      propagation: {
+        blocked: result.propagation.blocked,
+        reason: result.propagation.reason,
+        interpretedFacts: result.propagation.interpretedFacts || [],
+        partialTrust: result.propagation.partialTrust,
+        quantityMode: result.propagation.quantityMode,
+      },
       completion: completion,
       outcome: outcomeBranch ? outcomeBranch.effects : null,
       outcomeBranch: outcomeBranch,
       experience: exp,
       processSteps: giver.processSteps || [],
       reputationResult: reputationResult,
+      knowledgeAudit: knowledgeAudit,
+      gameStateApply: gameStateApply,
+      sessionKey: sessionKey,
+      v1OutcomeSource: "interpretedFacts_only",
     };
   }
 
