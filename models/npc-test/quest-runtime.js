@@ -4,6 +4,7 @@
  */
 (function (global) {
   var catalog = null;
+  var QUEST_FLOW_STORE = new Map();
 
   function loadJsonSync(url) {
     try {
@@ -233,7 +234,15 @@
       allowPartialTrust: allowPartialTrust,
       persistSession: Boolean(options.persistSession),
       sessionKey: options.sessionKey || "quest-" + quest.id + "-" + giver.giverId,
-      currentTick: options.currentTick || Date.now() % 100000,
+      currentTick:
+        options.currentTick != null
+          ? options.currentTick
+          : global.GameClock
+            ? global.GameClock.resolveTick({ sessionKey: options.sessionKey || "quest-default" })
+            : 1000,
+      recordPlayerKnowledge: options.recordPlayerKnowledge !== false,
+      seedWorldTruthFromFacts: Boolean(options.seedWorldTruthFromFacts),
+      advanceTicksAfterPropagate: options.advanceTicksAfterPropagate || 1,
       trustLevel: options.trustLevel,
     });
 
@@ -300,21 +309,25 @@
       tier = Rep.getTier(repScore);
     }
 
-    var byTier = giver.acceptDialogueByTier || (quest && quest.sharedAcceptDialogueByTier);
+    var sharedTier = quest && quest.sharedAcceptDialogueByTier;
+    var giverTier = giver.acceptDialogueByTier;
     var line = "";
     var source = "acceptDialogue";
-    if (byTier && typeof byTier === "object") {
-      if (byTier[tier.id]) {
-        line = byTier[tier.id];
-        source = "acceptDialogueByTier:" + tier.id;
-      } else if (byTier.default) {
-        line = byTier.default;
-        source = "acceptDialogueByTier:default";
-      }
-    }
-    if (!line) {
-      line = giver.acceptDialogue || "";
-      source = "acceptDialogue";
+    if (giverTier && typeof giverTier === "object" && giverTier[tier.id]) {
+      line = giverTier[tier.id];
+      source = "giver.acceptDialogueByTier:" + tier.id;
+    } else if (tier.id === "neutral" && giver.acceptDialogue) {
+      line = giver.acceptDialogue;
+      source = "giver.acceptDialogue";
+    } else if (sharedTier && typeof sharedTier === "object" && sharedTier[tier.id]) {
+      line = sharedTier[tier.id];
+      source = "sharedAcceptDialogueByTier:" + tier.id;
+    } else if (sharedTier && sharedTier.default) {
+      line = sharedTier.default;
+      source = "sharedAcceptDialogueByTier:default";
+    } else if (giver.acceptDialogue) {
+      line = giver.acceptDialogue;
+      source = "giver.acceptDialogue";
     }
 
     var minTier = giver.minTierToAccept || (quest && quest.minTierToAccept) || null;
@@ -325,9 +338,12 @@
       if (!canAccept) {
         blockReason =
           "평판 " + tier.label + "(" + tier.id + ") < 필요 " + minTier;
-        if (byTier && byTier.refused) {
-          line = byTier.refused;
-          source = "acceptDialogueByTier:refused";
+        if (sharedTier && sharedTier.refused) {
+          line = sharedTier.refused;
+          source = "sharedAcceptDialogueByTier:refused";
+        } else if (giverTier && giverTier.refused) {
+          line = giverTier.refused;
+          source = "giver.acceptDialogueByTier:refused";
         } else if (giver.refusedDialogue) {
           line = giver.refusedDialogue;
           source = "refusedDialogue";
@@ -355,6 +371,302 @@
     return resolveAcceptDialogue(giver, quest, options);
   }
 
+  function createQuestInstance(questId, giverId) {
+    var quest = getQuest(questId);
+    if (!quest) throw new Error("Quest not found: " + questId);
+    var giver = getQuestGiver(quest, giverId);
+    if (!giver) throw new Error("Quest giver not found: " + giverId);
+    var template = (catalog && catalog.questInstanceTemplate) || {};
+    return {
+      questId: questId,
+      state: "accepted",
+      chosenQuestGiverId: giverId,
+      currentStepId: null,
+      completedStepIds: [],
+      turnInNpcId: template.turnInNpcId || turnInProfileKey(giver),
+    };
+  }
+
+  function getGiverBriefing(giver, quest) {
+    var steps = (giver.processSteps || []).slice().sort(function (a, b) {
+      return (a.order || 0) - (b.order || 0);
+    });
+    var firstDialogue = steps.find(function (s) {
+      return s.type === "dialogue" && s.npcLine;
+    });
+    return {
+      introDialogue: (quest && quest.introDialogue) || "",
+      briefingLine: firstDialogue ? firstDialogue.npcLine : "",
+      briefingLocation: firstDialogue ? firstDialogue.location : "",
+      stepsTotal: steps.length,
+    };
+  }
+
+  function acceptQuest(questId, giverId, options) {
+    var opts = options || {};
+    var sessionKey = opts.sessionKey || "default";
+    var quest = getQuest(questId);
+    var giver = getQuestGiver(quest, giverId);
+    var accept = resolveAcceptDialogue(giver, quest, opts);
+    if (!accept.canAccept) {
+      return { ok: false, accept: accept, reason: accept.blockReason || "cannot accept" };
+    }
+    var instance = createQuestInstance(questId, giverId);
+    instance.state = "active";
+    instance.stepIndex = 0;
+    var briefing = getGiverBriefing(giver, quest);
+    QUEST_FLOW_STORE.set(sessionKey, {
+      questId: questId,
+      giverId: giverId,
+      instance: instance,
+      steps: (giver.processSteps || []).slice().sort(function (a, b) {
+        return (a.order || 0) - (b.order || 0);
+      }),
+      briefing: briefing,
+      log: [],
+    });
+    if (global.QuestGameState) {
+      global.QuestGameState.setActiveQuest(sessionKey, instance, {
+        questId: questId,
+        giverId: giverId,
+        introDialogue: briefing.introDialogue,
+        acceptLine: accept.line,
+      });
+    }
+    return {
+      ok: true,
+      accept: accept,
+      instance: instance,
+      briefing: briefing,
+      introDialogue: briefing.introDialogue,
+    };
+  }
+
+  function getQuestFlow(sessionKey) {
+    return QUEST_FLOW_STORE.get(String(sessionKey || "default")) || null;
+  }
+
+  function advanceProcessStep(options) {
+    var opts = options || {};
+    var sessionKey = opts.sessionKey || "default";
+    var flow = QUEST_FLOW_STORE.get(sessionKey);
+    if (!flow) {
+      return { ok: false, reason: "no active quest; call acceptQuest first" };
+    }
+    var idx = flow.instance.stepIndex || 0;
+    if (idx >= flow.steps.length) {
+      return { ok: false, reason: "all steps done", instance: flow.instance };
+    }
+    var step = flow.steps[idx];
+    var row = {
+      stepId: step.stepId,
+      order: step.order,
+      type: step.type,
+      location: step.location || "",
+      title: step.title || "",
+      status: "completed",
+      npcLine: step.npcLine || null,
+      playerAction: step.playerAction || null,
+    };
+    var turnInResult = null;
+
+    if (step.type === "dialogue") {
+      row.summary = step.npcLine || step.title;
+    } else if (step.type === "travel") {
+      row.summary = "이동 완료: " + (step.location || "");
+    } else if (step.type === "fact_input") {
+      if (!opts.scenarioText || !opts.engine || !opts.parser) {
+        row.status = "awaiting_report";
+        row.summary = "플레이어 보고 문장 필요";
+        flow.log.push(row);
+        return { ok: true, awaitingReport: true, step: row, instance: flow.instance };
+      }
+      turnInResult = runQuestTurnIn({
+        questId: flow.questId,
+        giverId: flow.giverId,
+        scenarioText: opts.scenarioText,
+        engine: opts.engine,
+        parser: opts.parser,
+        sessionKey: opts.engineSessionKey || sessionKey,
+        reputationSessionKey: opts.reputationSessionKey || sessionKey,
+        persistSession: opts.persistSession,
+      });
+      row.turnIn = {
+        completed: turnInResult.completion.completed,
+        branchId: turnInResult.outcomeBranch && turnInResult.outcomeBranch.branchId,
+        gold: turnInResult.outcome && turnInResult.outcome.rewards && turnInResult.outcome.rewards.gold,
+      };
+      row.status = turnInResult.completion.completed ? "completed" : "failed";
+      row.summary = turnInResult.completion.completed ? "보고 완료" : "보고 실패";
+      flow.turnInResult = turnInResult;
+      if (turnInResult.completion.completed) {
+        flow.instance.state = "completed";
+        if (global.QuestGameState) {
+          global.QuestGameState.applyTurnInOutcome(sessionKey, turnInResult);
+        }
+      }
+    } else {
+      row.summary = step.title || step.type;
+    }
+
+    flow.instance.completedStepIds.push(step.stepId);
+    flow.instance.currentStepId = step.stepId;
+    flow.instance.stepIndex = idx + 1;
+    flow.log.push(row);
+
+    var giver = getQuestGiver(getQuest(flow.questId), flow.giverId);
+    var done = flow.instance.stepIndex >= flow.steps.length;
+    return {
+      ok: true,
+      step: row,
+      turnInResult: turnInResult,
+      instance: flow.instance,
+      done: done,
+      completionDialogue:
+        done && giver && giver.experience ? giver.experience.completionDialogue : "",
+      gameState: global.QuestGameState ? global.QuestGameState.snapshot(sessionKey) : null,
+    };
+  }
+
+  /**
+   * Walks processSteps in order (dialogue/travel/fact_input).
+   * fact_input + scenarioText runs runQuestTurnIn when engine/parser provided.
+   */
+  function runProcessSteps(options) {
+    var quest = getQuest(options.questId);
+    if (!quest) throw new Error("Quest not found: " + options.questId);
+    var giver = getQuestGiver(quest, options.giverId);
+    if (!giver) throw new Error("Quest giver not found: " + options.giverId);
+
+    var instance = options.instance || createQuestInstance(options.questId, options.giverId);
+    var steps = (giver.processSteps || []).slice().sort(function (a, b) {
+      return (a.order || 0) - (b.order || 0);
+    });
+    var executed = [];
+    var turnInResult = null;
+
+    for (var i = 0; i < steps.length; i += 1) {
+      var step = steps[i];
+      var row = {
+        stepId: step.stepId,
+        order: step.order,
+        type: step.type,
+        location: step.location || "",
+        title: step.title || "",
+        status: "completed",
+        npcLine: step.npcLine || null,
+        playerAction: step.playerAction || null,
+        triggersEngine: Boolean(step.triggersEngine),
+      };
+
+      if (step.type === "dialogue" && step.npcLine) {
+        row.summary = step.npcLine;
+      } else if (step.type === "travel") {
+        row.summary = "이동: " + (step.location || "?");
+      } else if (step.type === "fact_input") {
+        row.summary = "보고 입력 대기 → 엔진 연동";
+        if (options.scenarioText && options.engine && options.parser) {
+          turnInResult = runQuestTurnIn({
+            questId: options.questId,
+            giverId: options.giverId,
+            scenarioText: options.scenarioText,
+            engine: options.engine,
+            parser: options.parser,
+            sessionKey: options.sessionKey,
+            reputationSessionKey: options.reputationSessionKey,
+            persistSession: options.persistSession,
+          });
+          row.turnIn = {
+            completed: turnInResult.completion.completed,
+            branchId: turnInResult.outcomeBranch && turnInResult.outcomeBranch.branchId,
+            gold: turnInResult.outcome && turnInResult.outcome.rewards && turnInResult.outcome.rewards.gold,
+          };
+          row.status = turnInResult.completion.completed ? "completed" : "failed";
+        }
+      } else if (step.type === "interact") {
+        row.summary = "상호작용: " + (step.title || step.stepId);
+      }
+
+      executed.push(row);
+      instance.completedStepIds.push(step.stepId);
+      instance.currentStepId = step.stepId;
+    }
+
+    instance.state = turnInResult
+      ? turnInResult.completion.completed
+        ? "completed"
+        : "turn_in_failed"
+      : "steps_preview_done";
+
+    return {
+      questId: quest.id,
+      giverId: giver.giverId,
+      introDialogue: quest.introDialogue || "",
+      acceptDialogue: resolveAcceptDialogue(giver, quest, options),
+      completionDialogue: (giver.experience && giver.experience.completionDialogue) || "",
+      steps: executed,
+      instance: instance,
+      turnInResult: turnInResult,
+    };
+  }
+
+  /**
+   * Full local quest play: accept → all steps → turn-in → game state apply.
+   */
+  function runQuestFlow(options) {
+    var opts = options || {};
+    var sessionKey = opts.sessionKey || "default";
+    var acceptRes = acceptQuest(opts.questId, opts.giverId, opts);
+    if (!acceptRes.ok) {
+      return { ok: false, accept: acceptRes.accept, reason: acceptRes.reason };
+    }
+    var stepResults = [];
+    var lastAdvance = null;
+    while (true) {
+      lastAdvance = advanceProcessStep({
+        sessionKey: sessionKey,
+        scenarioText: opts.scenarioText,
+        engine: opts.engine,
+        parser: opts.parser,
+        reputationSessionKey: opts.reputationSessionKey,
+        engineSessionKey: opts.engineSessionKey,
+        persistSession: opts.persistSession,
+      });
+      if (!lastAdvance.ok) break;
+      if (lastAdvance.awaitingReport) {
+        return {
+          ok: false,
+          reason: "report required at fact_input",
+          accept: acceptRes,
+          steps: stepResults,
+        };
+      }
+      stepResults.push(lastAdvance.step);
+      if (lastAdvance.done) break;
+    }
+    var giver = getQuestGiver(getQuest(opts.questId), opts.giverId);
+    var flow = QUEST_FLOW_STORE.get(sessionKey);
+    var turnInResult = (flow && flow.turnInResult) || (lastAdvance && lastAdvance.turnInResult);
+    var completed =
+      turnInResult && turnInResult.completion && turnInResult.completion.completed;
+    return {
+      ok: Boolean(completed),
+      accept: acceptRes.accept,
+      briefing: acceptRes.briefing,
+      introDialogue: acceptRes.introDialogue,
+      steps: stepResults,
+      instance: flow && flow.instance,
+      turnInResult: turnInResult,
+      completionDialogue:
+        (giver && giver.experience && giver.experience.completionDialogue) || "",
+      gameState: global.QuestGameState ? global.QuestGameState.snapshot(sessionKey) : null,
+    };
+  }
+
+  function clearQuestFlow(sessionKey) {
+    QUEST_FLOW_STORE.delete(String(sessionKey || "default"));
+  }
+
   global.QuestRuntime = {
     loadQuestCatalog: loadQuestCatalog,
     setQuestCatalog: setQuestCatalog,
@@ -370,5 +682,13 @@
     resolveAcceptDialogue: resolveAcceptDialogue,
     getAcceptDialogue: getAcceptDialogue,
     turnInProfileKey: turnInProfileKey,
+    createQuestInstance: createQuestInstance,
+    runProcessSteps: runProcessSteps,
+    getGiverBriefing: getGiverBriefing,
+    acceptQuest: acceptQuest,
+    getQuestFlow: getQuestFlow,
+    advanceProcessStep: advanceProcessStep,
+    runQuestFlow: runQuestFlow,
+    clearQuestFlow: clearQuestFlow,
   };
 })(typeof window !== "undefined" ? window : globalThis);

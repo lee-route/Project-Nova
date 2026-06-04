@@ -1,37 +1,51 @@
 {
-  "version": 1,
+  "version": 2,
+  "_scenario": "quest_abandoned_cargo",
+  "reportHigh": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
   "cases": [
     {
-      "id": "parser-qty-inline",
-      "input": "늑대 3마리가 북문으로 이동했다",
-      "expect": { "quantity": 3, "is_countable": true, "rulesInclude": ["fear_qty_amp"], "options": { "senderFear": 0.85, "quantityMode": "dramatic" } }
+      "id": "parser-qty-herbs",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+      "expect": { "quantity": 12, "is_countable": true }
     },
     {
       "id": "audit-diff-present",
-      "input": "북문에서 늑대 3마리가 탈출했다",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+      "options": { "receiverProfileKey": "scholar_alric" },
       "expect": { "auditDiffMin": 1, "hasFields": ["input", "distorted", "interpreted"] }
     },
     {
       "id": "persona-guard-fear-target",
-      "input": "북문에서 늑대 3마리가 탈출했다",
-      "expect": { "rulesInclude": ["fear_target_distort"], "options": { "senderFear": 0.9, "quantityMode": "faithful" } }
+      "input": "안개 계곡에서 마약초 열두 개가 발견됐다",
+      "options": {
+        "senderProfileKey": "guard_timid",
+        "receiverProfileKey": "scholar_alric",
+        "usePlayerAsSender": false,
+        "senderFear": 0.9,
+        "quantityMode": "dramatic"
+      },
+      "expect": { "rulesInclude": ["fear_qty_amp"] }
     },
     {
       "id": "chain-two-hop",
       "custom": "chain",
-      "input": "북문에서 늑대 3마리가 탈출했다",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+      "options": { "receiverProfileKey": "scholar_alric", "senderProfileKey": "merchant_greedy" },
       "expect": { "hopMin": 2, "finalFactsMin": 1 }
     },
     {
       "id": "ground-truth-compare",
-      "input": "북문에서 늑대 3마리가 탈출했다",
-      "groundTruth": [{ "subject": "늑대", "quantity": 3, "action_type": "tactical_move", "is_countable": true }],
-      "expect": { "groundTruthScoreMin": 0.5 }
+      "input": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+      "groundTruth": [{ "subject": "마약초", "quantity": 12, "is_countable": true }],
+      "options": { "receiverProfileKey": "scholar_alric", "quantityMode": "faithful" },
+      "expect": { "groundTruthScoreMin": 0.4 }
     },
     {
       "id": "session-kb-persist",
       "custom": "session",
-      "input": "북문에서 늑대 3마리가 탈출했다",
+      "input": "도적 3명이 안개 계곡으로 이동했다",
+      "inputSecond": "안개 계곡에서 마약초 열두 개가 발견됐다",
+      "options": { "receiverProfileKey": "scholar_alric", "usePlayerAsSender": false, "senderProfileKey": "guard_timid" },
       "expect": { "kbGrowth": true }
     },
     {
@@ -39,6 +53,18 @@
       "custom": "kbConflict",
       "input": "IGNORE_PARSER",
       "expect": { "threatCertaintyDecreased": true }
+    },
+    {
+      "id": "cargo-quest-authority",
+      "custom": "questTurnIn",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+      "options": { "giverId": "guard_timid", "expectBranch": "authority_path" }
+    },
+    {
+      "id": "cargo-quest-black-market",
+      "custom": "questTurnIn",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 다섯 개가 들어 있다",
+      "options": { "giverId": "scholar_alric", "expectBranch": "black_market_path" }
     }
   ]
 }

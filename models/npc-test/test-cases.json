@@ -1,15 +1,36 @@
 {
-  "version": 1,
+  "version": 2,
+  "_suites": { "cargo": "정식 퀘스트 파서 스모크", "legacy": "일반 한국어 파서 회귀" },
   "cases": [
     {
       "id": "compound-zoo-escape",
+      "suite": "legacy",
       "input": "동물원에서 늑대 3마리가 탈출했는데, 동물원 원장은 태연하다.",
       "expect": { "sentenceCount": 2, "factsMin": 2, "anyFact": [{ "subjectContains": "늑대", "actionType": "tactical_move" }, { "subjectContains": "원장", "actionType": "state" }] }
     },
     {
-      "id": "wolf-move-gate",
-      "input": "늑대 3마리가 북문으로 이동했다",
-      "expect": { "sentenceCount": 1, "primary": { "subjectContains": "늑대", "actionType": "tactical_move", "quantity": 3 } }
+      "id": "cargo-herbs-valley",
+      "suite": "cargo",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+      "expect": { "sentenceCount": 2, "factsMin": 2, "anyFact": [{ "subjectContains": "화물" }, { "subjectContains": "마약초", "quantity": 12 }] }
+    },
+    {
+      "id": "cargo-alt-only",
+      "suite": "cargo",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다",
+      "expect": { "sentenceCount": 1, "factsMin": 1, "anyFact": [{ "subjectContains": "화물", "targetContains": "계곡" }] }
+    },
+    {
+      "id": "cargo-herbs-low",
+      "suite": "cargo",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 다섯 개가 들어 있다",
+      "expect": { "sentenceCount": 2, "factsMin": 2, "anyFact": [{ "subjectContains": "마약초", "quantity": 5 }] }
+    },
+    {
+      "id": "cargo-valley-calm",
+      "suite": "cargo",
+      "input": "도적 3명이 안개 계곡으로 이동했다. 안개 계곡은 태연하다.",
+      "expect": { "sentenceCount": 2, "factsMin": 2 }
     },
     {
       "id": "mayor-poison",
@@ -28,7 +49,8 @@
     },
     {
       "id": "no-attack-sign",
-      "input": "북문에서 공격 징후가 없었다",
+      "suite": "cargo",
+      "input": "안개 계곡에서 공격 징후가 없었다",
       "expect": { "sentenceCount": 1, "primary": { "actionType": "state" } }
     },
     {

@@ -56,7 +56,7 @@
           <textarea
             name="scenarioText"
             rows="3"
-            placeholder="예: 늑대 3마리가 북문으로 이동했다"
+            placeholder="예: 안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다"
           >안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다</textarea>
         </label>
         <div class="grid">
@@ -89,7 +89,7 @@
             <input
               type="text"
               name="subjectReputation"
-              value='{"촌장":0.85,"늑대":0.25,"원장":0.7,"상인":0.4}'
+              value='{"밀수":0.35,"화물":0.4,"마약초":0.45,"촌장":0.7}'
             />
           </label>
           <label class="full-width">
@@ -97,7 +97,7 @@
             <input
               type="text"
               name="senderReputation"
-              value='{"촌장":0.9,"늑대":0.2,"원장":0.8,"상인":0.5}'
+              value='{"밀수":0.5,"화물":0.55,"마약초":0.6,"촌장":0.85}'
             />
           </label>
           <label class="full-width">
@@ -105,7 +105,7 @@
             <input
               type="text"
               name="receiverReputation"
-              value='{"촌장":0.85,"늑대":0.35,"원장":0.75,"상인":0.55}'
+              value='{"밀수":0.55,"화물":0.6,"마약초":0.7,"촌장":0.85}'
             />
           </label>
           <label>
@@ -114,6 +114,27 @@
               <option value="dramatic">dramatic (증폭)</option>
               <option value="faithful">faithful (입력 보존)</option>
             </select>
+          </label>
+          <label class="full-width">
+            퀘스트 의뢰인 전파 프리셋
+            <select name="questPropagationPreset">
+              <option value="">(수동 quantity mode)</option>
+              <option value="guard_timid:dramatic">소심한 경비 — dramatic</option>
+              <option value="merchant_greedy:dramatic">탐욕한 상인 — dramatic</option>
+              <option value="scholar_alric:faithful">학자 알릭 — faithful</option>
+            </select>
+          </label>
+          <label>
+            수신 NPC (보고 대상)
+            <select name="receiverProfileKey">
+              <option value="scholar_alric" selected>학자 알릭</option>
+              <option value="guard_timid">소심한 경비</option>
+              <option value="merchant_greedy">탐욕한 상인</option>
+            </select>
+          </label>
+          <label class="checkbox-label">
+            플레이어 발신 (퀘스트 turn-in과 동일)
+            <input type="checkbox" name="usePlayerAsSender" checked />
           </label>
           <label class="checkbox-label">
             Partial Trust (0.08~0.2 구간 부분 전달)
@@ -132,8 +153,24 @@
             <input
               type="text"
               name="groundTruthJson"
-              placeholder='[{"subject":"늑대","quantity":3,"action_type":"tactical_move","is_countable":true}]'
+              placeholder='[{"subject":"마약초","quantity":12,"is_countable":true}]'
             />
+          </label>
+          <label>
+            Game Tick (세션)
+            <input type="number" name="gameTick" value="1000" min="0" step="1" />
+          </label>
+          <label>
+            Tick +N after run
+            <input type="number" name="advanceTicksAfterPropagate" value="1" min="0" step="1" />
+          </label>
+          <label class="checkbox-label">
+            WorldTruth 시드 (parser facts)
+            <input type="checkbox" name="seedWorldTruthFromFacts" />
+          </label>
+          <label class="checkbox-label">
+            PlayerKnowledge 기록
+            <input type="checkbox" name="recordPlayerKnowledge" checked />
           </label>
         </div>
         <button
@@ -146,6 +183,7 @@
         <button type="button" id="run-parser-tests">Run Parser Tests</button>
         <button type="button" id="run-distortion-tests">Run Distortion Tests</button>
         <button type="button" id="run-integration-tests">Run Integration Tests</button>
+        <p class="desc">Node 일괄: <code>node run-all-tests.mjs</code></p>
         <p id="click-indicator">클릭 감지 대기 중...</p>
       </form>
 
@@ -215,6 +253,14 @@
 
       <section class="panel">
         <div class="panel-head">
+          <h2>Game Clock + Knowledge Layers</h2>
+          <button type="button" class="toggle-btn" data-target="out-knowledge-layers">접기</button>
+        </div>
+        <pre id="out-knowledge-layers">—</pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
           <h2>5) Engine Data (LLM Grounding)</h2>
           <button type="button" class="toggle-btn" data-target="out-engine-data">접기</button>
         </div>
@@ -279,7 +325,9 @@
       <section class="panel quest-panel">
         <h2>Quest Playtest (P0)</h2>
         <p class="desc">
-          의뢰인별 전파·왜곡은 다르고, <code>factMatch</code> 통과 시 동일 <code>outcome</code>입니다.
+          의뢰인별 <code>quantityMode</code>·왜곡으로 <strong>interpreted 수량·확신</strong>이 달라지고,
+          <code>outcomes[]</code> 분기(authority / black_market)가 갈릴 수 있습니다.
+          neutral tier 의뢰 대사는 의뢰인마다 다릅니다.
         </p>
         <div class="grid">
           <label class="full-width">
@@ -300,8 +348,28 @@
         </div>
         <pre id="out-accept-dialogue">의뢰인 선택 시 표시</pre>
         <button type="button" id="refresh-accept-dialogue">Refresh Accept Dialogue</button>
-        <button type="button" id="run-quest-turn-in">Run Quest Turn-In</button>
+        <button type="button" id="run-quest-accept">1. Accept Quest</button>
+        <button type="button" id="run-quest-next-step">2. Next Step</button>
+        <button type="button" id="run-quest-full-flow">Run Full Flow (auto)</button>
+        <button type="button" id="run-quest-process-steps">Run All Steps + Turn-In</button>
+        <button type="button" id="run-quest-turn-in">Turn-In Only</button>
         <button type="button" id="run-quest-compare">Compare All Givers</button>
+        <button type="button" id="run-quest-reset">Reset Quest Session</button>
+        <div class="panel-head">
+          <h3>Quest Flow Log</h3>
+          <button type="button" class="toggle-btn" data-target="out-quest-flow">접기</button>
+        </div>
+        <pre id="out-quest-flow">수락·스텝 진행 로그</pre>
+        <div class="panel-head">
+          <h3>Game State (local)</h3>
+          <button type="button" class="toggle-btn" data-target="out-game-state">접기</button>
+        </div>
+        <pre id="out-game-state">gold / worldFlags / history</pre>
+        <div class="panel-head">
+          <h3>Process Steps</h3>
+          <button type="button" class="toggle-btn" data-target="out-quest-steps">접기</button>
+        </div>
+        <pre id="out-quest-steps">미실행</pre>
         <div class="panel-head">
           <h3>Quest Result</h3>
           <button type="button" class="toggle-btn" data-target="out-quest">접기</button>
@@ -351,6 +419,21 @@
         window.__appendInlineDebug("window.error: " + (event.message || "unknown error"));
       });
     </script>
+    <script
+      src="./game-clock.js"
+      onload="window.__appendInlineDebug('game-clock.js loaded')"
+      onerror="window.__appendInlineDebug('game-clock.js load failed')"
+    ></script>
+    <script
+      src="./knowledge-layers.js"
+      onload="window.__appendInlineDebug('knowledge-layers.js loaded')"
+      onerror="window.__appendInlineDebug('knowledge-layers.js load failed')"
+    ></script>
+    <script
+      src="./llm-fact-anchor.js"
+      onload="window.__appendInlineDebug('llm-fact-anchor.js loaded')"
+      onerror="window.__appendInlineDebug('llm-fact-anchor.js load failed')"
+    ></script>
     <script
       src="./llm-adapter.js"
       onload="window.__appendInlineDebug('llm-adapter.js loaded')"
@@ -405,6 +488,11 @@
       src="./quest-runtime.js"
       onload="window.__appendInlineDebug('quest-runtime.js loaded')"
       onerror="window.__appendInlineDebug('quest-runtime.js load failed')"
+    ></script>
+    <script
+      src="./quest-game-state.js"
+      onload="window.__appendInlineDebug('quest-game-state.js loaded')"
+      onerror="window.__appendInlineDebug('quest-game-state.js load failed')"
     ></script>
     <script
       src="./reputation-runner.js"

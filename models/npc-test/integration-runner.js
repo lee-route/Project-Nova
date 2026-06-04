@@ -51,13 +51,22 @@
     if (testCase.custom === "session") {
       engine.clearSession("itest-session");
       var f1 = parser.buildFactsFromParsed(parser.parseScenarioText(testCase.input));
-      var r1 = engine.executeScenario({ facts: f1, persistSession: true, sessionKey: "itest-session", quantityMode: "faithful" });
-      var r2 = engine.executeScenario({
+      var r1 = engine.executeScenario({
         facts: f1,
         persistSession: true,
         sessionKey: "itest-session",
         quantityMode: "faithful",
+        receiverProfileKey: opts.receiverProfileKey || "scholar_alric",
+      });
+      var secondText = testCase.inputSecond || testCase.input;
+      var f2 = parser.buildFactsFromParsed(parser.parseScenarioText(secondText));
+      var r2 = engine.executeScenario({
+        facts: f2,
+        persistSession: true,
+        sessionKey: "itest-session",
+        quantityMode: "faithful",
         currentTick: 1005,
+        receiverProfileKey: opts.receiverProfileKey || "scholar_alric",
       });
       if (expect.kbGrowth && r2.knowledgeBaseSnapshot.length <= r1.knowledgeBaseSnapshot.length) {
         return { ok: false, reason: "KB did not grow/merge" };
@@ -70,10 +79,10 @@
       var threatFacts = [
         {
           fact_id: "F01",
-          subject: "늑대",
-          action: "탈출",
-          target: "북문",
-          quantity: 3,
+          subject: "밀수 화물",
+          action: "버려져 있다",
+          target: "안개 계곡",
+          quantity: 12,
           certainty: 0.7,
           is_countable: true,
           action_type: "tactical_move",
@@ -84,9 +93,9 @@
       var calmFacts = [
         {
           fact_id: "F02",
-          subject: "늑대",
+          subject: "안개 계곡",
           action: "태연한 상태다",
-          target: "북문",
+          target: "안개 계곡",
           quantity: 1,
           certainty: 0.6,
           is_countable: false,
@@ -109,7 +118,7 @@
       var threat1 = (r1.knowledgeBaseSnapshot || []).find(function (x) {
         return (
           String(x.truth_value.action_type || "").toLowerCase() === "tactical_move" &&
-          String(x.truth_value.target || "").indexOf("북문") >= 0
+          String(x.truth_value.target || "").indexOf("안개 계곡") >= 0
         );
       });
       var c1 = threat1 ? Number(threat1.truth_value.certainty || 0) : 0;
@@ -127,7 +136,7 @@
       var threat2 = (r2.knowledgeBaseSnapshot || []).find(function (x) {
         return (
           String(x.truth_value.action_type || "").toLowerCase() === "tactical_move" &&
-          String(x.truth_value.target || "").indexOf("북문") >= 0
+          String(x.truth_value.target || "").indexOf("안개 계곡") >= 0
         );
       });
       var c2 = threat2 ? Number(threat2.truth_value.certainty || 0) : 0;
@@ -138,20 +147,62 @@
       return { ok: true, reason: "" };
     }
 
+    if (testCase.custom === "questTurnIn") {
+      if (!window.QuestRuntime) {
+        return { ok: false, reason: "QuestRuntime missing" };
+      }
+      var run = window.QuestRuntime.runQuestTurnIn({
+        questId: "quest_abandoned_cargo",
+        giverId: opts.giverId || "guard_timid",
+        scenarioText: testCase.input,
+        engine: engine,
+        parser: parser,
+        sessionKey: "itest-quest-" + testCase.id,
+        reputationSessionKey: "itest-quest-" + testCase.id,
+      });
+      if (!run.completion.completed) {
+        return { ok: false, reason: "quest not completed" };
+      }
+      if (opts.expectBranch && run.outcomeBranch.branchId !== opts.expectBranch) {
+        return { ok: false, reason: "branch " + run.outcomeBranch.branchId + " != " + opts.expectBranch };
+      }
+      return { ok: true, reason: "" };
+    }
+
     var parsed = parser.parseScenarioText(testCase.input);
     var facts = parsed.facts && parsed.facts.length ? parsed.facts : parser.buildFactsFromParsed(parsed);
 
-    if (expect.quantity != null && facts[0] && Number(facts[0].quantity) !== expect.quantity) {
-      return { ok: false, reason: "qty " + facts[0].quantity + " != " + expect.quantity };
+    if (expect.quantity != null) {
+      var herb = null;
+      for (var hi = 0; hi < facts.length; hi += 1) {
+        if (String(facts[hi].subject || "").indexOf("마약초") >= 0) herb = facts[hi];
+      }
+      if (!herb || Number(herb.quantity) !== expect.quantity) {
+        return { ok: false, reason: "qty herb mismatch" };
+      }
     }
-    if (expect.is_countable != null && facts[0] && Boolean(facts[0].is_countable) !== expect.is_countable) {
-      return { ok: false, reason: "countable mismatch" };
+    if (expect.is_countable != null) {
+      var herb2 = null;
+      for (var hj = 0; hj < facts.length; hj += 1) {
+        if (String(facts[hj].subject || "").indexOf("마약초") >= 0) herb2 = facts[hj];
+      }
+      if (herb2 && Boolean(herb2.is_countable) !== expect.is_countable) {
+        return { ok: false, reason: "countable mismatch" };
+      }
     }
 
+    var usePlayer = opts.usePlayerAsSender !== false && !opts.senderProfileKey;
     var result = engine.executeScenario({
       facts: facts,
       quantityMode: opts.quantityMode || "dramatic",
-      senderStats: { fear: opts.senderFear != null ? opts.senderFear : 0.5, hostility: 0.5, trust: 0.55 },
+      usePlayerAsSender: usePlayer,
+      receiverProfileKey: opts.receiverProfileKey || "scholar_alric",
+      senderProfileKey: opts.senderProfileKey,
+      senderStats: {
+        fear: opts.senderFear != null ? opts.senderFear : 0.5,
+        hostility: opts.senderHostility != null ? opts.senderHostility : 0.5,
+        trust: 0.55,
+      },
       receiverStats: { credulity: 0.7, trust: 0.65 },
       groundTruth: testCase.groundTruth || null,
     });

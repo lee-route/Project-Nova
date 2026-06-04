@@ -1,0 +1,220 @@
+================================================================================
+  Project-Nova / models/npc-test — 진행 상황 정리
+  작성 기준일: 2026-05-27
+  브랜치: 기현 (언리얼 연동 제외, 로컬 프로토타입 완료 단계)
+================================================================================
+
+
+1. 프로젝트 목적
+--------------------------------------------------------------------------------
+  캡스톤 게임(Project-Nova)용 NPC 정보 시스템의 브라우저·Node 프로토타입.
+
+  - 플레이어가 입력한 문장을 파서가 facts[] 로 분해
+  - 결정론 엔진이 발신·수신 NPC 성향·평판에 따라 왜곡·해석
+  - NPC/LLM이 보는 "진실"은 interpretedFacts 뿐 (원문·파서 fact 직접 사용 금지)
+  - 퀘스트 완료·보상·분기는 interpreted 수량·확신 기준
+
+  언리얼 C++ 게임 엔진이 아니라, UE에 붙일 "두뇌"를 검증하는 샌드박스다.
+
+
+2. 설계 원칙 (합의·구현됨)
+--------------------------------------------------------------------------------
+  (1) 동일 입력·동일 스탯·동일 신뢰 → 동일 왜곡·동일 applied_rules
+  (2) NPC가 믿는 정보 = 전파·해석 이후 interpretedFacts
+  (3) LLM = 말투·연출만, 사실 생성·추측 금지 (mock 기본, live 선택 가능)
+  (4) 퀘스트 분기 = outcomes[] (authority_path / black_market_path / fallback)
+  (5) 평판 두 층:
+      - NPC 주제별 reputation (npcs.json) → 왜곡 엔진
+      - 플레이어↔NPC reputation (reputation-config + reputation-system.js)
+        → 의뢰 대사 tier, defaultTrustToPlayer 보정
+
+
+3. 퀘스트 방향 전환 (완료)
+--------------------------------------------------------------------------------
+  [이전]  늑대 탈출·북문 등 프로토타입 퀘스트 (quest_report_wolf_escape 등)
+  [현재]  정식 퀘스트 1개만 활성:
+
+    quest_abandoned_cargo — "밀수업자의 버려진 화물"
+
+  - 의뢰인: guard_timid (dramatic) / merchant_greedy (dramatic) / scholar_alric (faithful)
+  - 보고 대상(turn-in): scholar_alric
+  - 기본 보고문 예:
+      "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다"
+
+  - outcomes[]:
+      authority_path   : interpreted qty ≥ 10, certainty ≥ 0.6 → gold 150, cargo→authority
+      black_market_path: interpreted qty ≤ 9, certainty ≥ 0.4  → gold 300, cargo→black_market
+      outcomeFallback  : 그 외 중간값 → gold 80, destination unknown
+
+  - quests-draft.json 에서 _archivedQuests(늑대·반군) 제거
+  - 회귀 테스트·distortion/integration 케이스 → 안개 계곡·마약초·밀수 테마로 정렬
+
+
+4. 구현 완료 항목
+--------------------------------------------------------------------------------
+
+4.1 핵심 엔진 (quest-system.js)
+  - distortInformation / reinterpretInfo / propagateFactBundle
+  - KnowledgeBase merge, bundle 모순(같은 장소 위협 vs 태연), session persist
+  - persistSession 시 receiver KB 유지, F01 info_id 충돌 시 mergeKey 기반 storageId 분리
+  - placeTokens에 "안개 계곡" 추가
+  - BUILTIN_PROFILE_REGISTRY = npcs.json 과 동기 (guard_timid / merchant_greedy / scholar_alric)
+
+4.2 파서 (app.js + dictionaries.js)
+  - 한국어 복합문, 수량(열두 개 등), rumor, state/tactical 분류
+  - 빈 입력 기본값: 밀수 화물·안개 계곡 (늑대 기본값 제거)
+  - test-cases.json: cargo 스위트 + legacy 파서 회귀 병행
+
+4.3 퀘스트 런타임 (quest-runtime.js)
+  - loadQuestCatalog, factMatch / factMatchAlt, pickOutcomeBranch
+  - runQuestTurnIn (플레이어 발신 → scholar_alric 수신)
+  - resolveAcceptDialogue: neutral tier → 의뢰인별 acceptDialogue (3색)
+                      hostile/trusted 등 → sharedAcceptDialogueByTier
+  - acceptQuest / advanceProcessStep / runQuestFlow (스텝별 진행)
+  - runProcessSteps (한 번에 3스텝 + turn-in)
+
+4.4 로컬 게임 상태 (quest-game-state.js) — UE 대체 데모
+  - gold, xp, villageReputation, worldFlags, questHistory
+  - runQuestTurnIn / runQuestFlow 완료 시 applyTurnInOutcome
+  - exportState / importState (세이브 슬롯 연동 전 로컬 스냅샷)
+
+4.5 평판 (reputation-system.js + JSON)
+  - tier: hostile / wary / neutral / friendly / trusted
+  - 퀘스트 완료 playerRepDelta (village, current_giver, npc 키)
+  - reputation-config fallback 키 → cargo NPC 3명으로 통일
+
+4.6 NPC·플레이어 프로필 JSON (v3 정리)
+  - npcs.json: 주제 reputation 확장(밀수, 화물, 마약초, 안개 계곡, 도적), propagationPreset
+  - player-profile.json: initialNpcReputation ↔ config default 일치
+  - reputation-config.json: questRole, turnInTarget 메타
+  - data-loader.js: npcs + player + reputation setConfig
+  - profiles-sync-test.mjs: 세 파일 키·default 검증
+
+4.7 LLM (llm-adapter.js, llm-settings.js)
+  - mock 기본
+  - OpenAI / Anthropic / compatible live 경로 (API 키는 localStorage 또는 llm-config.local.json)
+  - 입력은 interpretedFacts → [Grounded DATA] 만
+
+4.8 브라우저 UI (index.html + runner 스크립트)
+  - Scenario Controls: usePlayerAsSender 기본 ON, scholar 수신, 의뢰인 quantityMode 프리셋
+  - Quest Playtest:
+      Accept Quest / Next Step / Run Full Flow / Turn-In Only / Compare Givers
+      Game State 패널, Process Steps, 의뢰 대사 미리보기
+  - Parser / Distortion / Integration 인브라우저 회귀 버튼
+  - Reputation 패널
+
+4.9 문서·도구
+  - README.md, ENGINE-DESIGN.txt, GAME-API.json (UE 연동 계약만, 코드 없음)
+  - package.json (npm test → run-all-tests.mjs)
+  - cargo-slice-report.mjs (high/low × 3 의뢰인 리포트)
+
+
+5. 회귀 테스트 현황 (Node)
+--------------------------------------------------------------------------------
+  명령:  cd models/npc-test && node run-all-tests.mjs
+
+  스위트                          건수/내용
+  ─────────────────────────────────────────────────────────
+  distortion-test.mjs             11 passed
+  integration-test.mjs            9 passed (cargo turn-in authority/black_market 포함)
+  quest-test.mjs                  guard/merchant authority, scholar black_market,
+                                  alt-only 완료, fallback, 실패 문장
+  reputation-test.mjs             passed
+  accept-dialogue-test.mjs        3 의뢰인 neutral 대사 분리 + tier
+  process-steps-test.mjs          3 의뢰인 × 3스텝 + turn-in
+  profiles-sync-test.mjs          JSON 3종 동기화
+  quest-flow-test.mjs             accept → step → gameState
+
+  추가: batch-parse-test.mjs (2000문장 파서 QA, 별도 실행)
+
+
+6. 의뢰인별 동작 요약 (검증됨)
+--------------------------------------------------------------------------------
+  동일 고수량 보고문(마약초 12개) 예:
+    guard_timid / merchant_greedy (dramatic) → qty 약 15, authority_path, gold 150
+    scholar_alric (faithful)                 → qty 약 12, authority_path, gold 150
+
+  저수량 보고문(마약초 5개) + scholar_alric:
+    → black_market_path, gold 300
+
+  의뢰인별 processSteps npcLine = 브리핑(3색 소문) 연출용 데이터
+  neutral 수락 대사 = giver.acceptDialogue 각각 다름
+
+
+7. 아직 하지 않은 것 (의도적·다음 단계)
+--------------------------------------------------------------------------------
+  [언리얼 연동]
+    - C++ / Blueprint / HTTP / WebBrowser 브릿지 없음
+    - GAME-API.json 에 JSON 계약만 정의
+    - UE에서 해야 할 일: 수락 UI, 이동·조사, 보고 입력, worldFlags/gold 반영
+
+  [게임 본편 연출]
+    - processSteps 의 travel/interact 실제 맵 트리거 (로컬은 스텁 완료 표시만)
+    - introDialogue / completionDialogue 자동 시네마틱
+    - 아이템 수거·전달
+
+  [장기 설계]
+    - 퀘스트 2·3개 확장, "세 가지 색 소문" 전용 시나리오 대규모 연출
+    - live LLM 유료·품질 실측
+
+  [정리 권장]
+    - 저장소에 wolf-slice-report.json / wolf-slice-report.mjs 잔존 시 삭제 검토
+    - test-cases.json 내 legacy(늑대/북문) 케이스는 파서 회귀용으로 유지 중
+
+
+8. 주요 파일 목록
+--------------------------------------------------------------------------------
+  엔진·런타임
+    quest-system.js, game-clock.js, knowledge-layers.js, llm-fact-anchor.js,
+    quest-runtime.js, quest-game-state.js, app.js, dictionaries.js
+
+  데이터
+    quests-draft.json, npcs.json, player-profile.json, reputation-config.json
+
+  UI·로더
+    index.html, styles.css, data-loader.js, quest-runner.js, reputation-runner.js,
+    parser-runner.js, distortion-runner.js, integration-runner.js, llm-settings.js
+
+  LLM
+    llm-adapter.js, llm-config.example.json
+
+  테스트·리포트
+    run-all-tests.mjs, *-test.mjs, *-test-cases.json,
+    cargo-slice-report.mjs / .json, batch-parse-test.mjs
+
+  문서
+    README.md, ENGINE-DESIGN.txt, GAME-API.json, PROGRESS.txt (본 문서)
+
+
+9. 브라우저에서 퀘스트 한 사이클 체험
+--------------------------------------------------------------------------------
+  1) index.html 을 로컬 서버로 연다
+  2) Quest Playtest 에서 의뢰인 선택
+  3) "1. Accept Quest" → 브리핑·수락 대사 확인
+  4) "Run Full Flow" 또는 "2. Next Step" 반복 (보고문 textarea 사용)
+  5) Game State 에서 gold, worldFlags.cargo_destination 확인
+
+
+10. Git·협업 메모
+--------------------------------------------------------------------------------
+  - npc-test 관련 작업은 브랜치 "기현" 에 커밋·푸시 이력 있음 (대화 기준)
+  - 본 폴더 전체가 아직 메인에 머지되지 않았을 수 있음 → 팀 정책에 따름
+  - 커밋은 사용자 요청 시에만 수행 (에이전트 규칙)
+
+
+================================================================================
+  [2026-05 지적 사항 4건 — 완료]
+    - PlayerKnowledge + WorldTruth (knowledge-layers.js)
+    - GameClock 세션 tick (game-clock.js), UI 연동
+    - source_chain / hop_depth 전파 규칙 + LLM grounding 필드
+    - LlmFactAnchor 출력 검증 (llm-adapter live 실패 시 mock 폴백)
+
+
+  요약 한 줄
+================================================================================
+  밀수 화물 퀘스트 1본·엔진·지식 레이어·시계·앵커링·회귀 테스트 완료.
+  언리얼에 API 붙여 worldFlags/gold/UI만 연결하면 인게임 퀘스트 진행 가능.
+
+================================================================================
+  문서 끝 — 갱신 시 ENGINE-DESIGN.txt, README.md 와 함께 맞출 것
+================================================================================

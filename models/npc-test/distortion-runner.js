@@ -46,9 +46,9 @@
       var atom = {
         info_id: "F01",
         truth_value: {
-          subject: "늑대",
-          action: "탈출",
-          target: "북문",
+          subject: "마약초",
+          action: "들어 있다",
+          target: "안개 계곡",
           quantity: 3,
           certainty: 0.7,
           is_countable: true,
@@ -58,14 +58,14 @@
       };
       kb.update(atom);
       var atom2 = JSON.parse(JSON.stringify(atom));
-      atom2.truth_value.quantity = 7;
+      atom2.truth_value.quantity = 15;
       atom2.truth_value.certainty = 0.9;
       var mergeRes = kb.update(atom2);
       var list = kb.list();
       if (!expect.kbMerge) return { ok: true, reason: "" };
       if (mergeRes.action !== "merge") return { ok: false, reason: "expected merge got " + mergeRes.action };
       if (list.length !== 1) return { ok: false, reason: "KB size " + list.length };
-      if (Number(list[0].truth_value.quantity) < 7) return { ok: false, reason: "qty merge failed" };
+      if (Number(list[0].truth_value.quantity) < 15) return { ok: false, reason: "qty merge failed" };
       return { ok: true, reason: "" };
     }
 
@@ -90,8 +90,11 @@
         credulity: opts.receiverCredulity != null ? opts.receiverCredulity : 0.7,
         trust: 0.65,
       },
-      senderReputation: opts.senderReputation || { 촌장: 0.85, 늑대: 0.25 },
-      receiverReputation: opts.receiverReputation || { 촌장: 0.85, 늑대: 0.35 },
+      usePlayerAsSender: opts.usePlayerAsSender !== false && !opts.senderProfileKey,
+      receiverProfileKey: opts.receiverProfileKey || "scholar_alric",
+      senderProfileKey: opts.senderProfileKey,
+      senderReputation: opts.senderReputation || { 밀수: 0.5, 화물: 0.5, 마약초: 0.5 },
+      receiverReputation: opts.receiverReputation || { 밀수: 0.55, 화물: 0.6, 마약초: 0.7 },
     });
 
     if (Boolean(expect.blocked) !== Boolean(result.propagation.blocked)) {

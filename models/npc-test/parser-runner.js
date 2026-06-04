@@ -92,10 +92,10 @@
       var result = evaluateCase(testCase, parser);
       if (result.ok) {
         pass += 1;
-        lines.push("[PASS] " + testCase.id);
+        lines.push("[PASS] " + testCase.id + (testCase.suite ? " (" + testCase.suite + ")" : " (legacy)"));
       } else {
         fail += 1;
-        lines.push("[FAIL] " + testCase.id + " -> " + result.reason);
+        lines.push("[FAIL] " + testCase.id + (testCase.suite ? " (" + testCase.suite + ")" : " (legacy)") + " -> " + result.reason);
         lines.push("       input: " + testCase.input);
       }
     }

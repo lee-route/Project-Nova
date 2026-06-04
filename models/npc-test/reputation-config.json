@@ -1,5 +1,15 @@
 {
-  "version": 2,
+  "version": 3,
+  "primaryQuestId": "quest_abandoned_cargo",
+  "_meta": {
+    "purpose": "플레이어↔NPC·마을 평판 tier (의뢰 대사·신뢰 보정)",
+    "pairedFiles": ["player-profile.json", "npcs.json"],
+    "editorNotes": [
+      "npcKeys.default 는 player.initialNpcReputation 과 맞출 것",
+      "npcKeys 키 집합 = npcs.json 의 profileKey 목록",
+      "주제별 reputation 은 npcs.json (엔진 왜곡 전용, 이 파일과 별개)"
+    ]
+  },
   "village": {
     "label": "마을 평판",
     "min": 0,
@@ -7,9 +17,24 @@
     "default": 50
   },
   "npcKeys": {
-    "guard_timid": { "label": "소심한 경비", "default": 0.5 },
-    "merchant_greedy": { "label": "탐욕한 상인", "default": 0.48 },
-    "scholar_alric": { "label": "학자 알릭", "default": 0.55 }
+    "guard_timid": {
+      "label": "소심한 경비",
+      "default": 0.5,
+      "questRole": "giver",
+      "turnInTarget": false
+    },
+    "merchant_greedy": {
+      "label": "탐욕한 상인",
+      "default": 0.48,
+      "questRole": "giver",
+      "turnInTarget": false
+    },
+    "scholar_alric": {
+      "label": "학자 알릭",
+      "default": 0.55,
+      "questRole": "giver",
+      "turnInTarget": true
+    }
   },
   "tiers": {
     "hostile": { "max": 0.24, "label": "적대" },

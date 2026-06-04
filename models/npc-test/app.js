@@ -16,6 +16,7 @@
   var outputSender = document.querySelector("#out-sender");
   var outputReceiver = document.querySelector("#out-receiver");
   var outputKb = document.querySelector("#out-kb");
+  var outputKnowledgeLayers = document.querySelector("#out-knowledge-layers");
   var outputDialogue = document.querySelector("#out-dialogue");
   var outputDialogueMain = document.querySelector("#out-dialogue-main");
   var outputParsePipeline = document.querySelector("#out-parse-pipeline");
@@ -310,13 +311,13 @@
   function mergeParsedSentences(list) {
     if (!list || list.length === 0) {
       return {
-        subject: "wolf",
-        quantity: 3,
-        action: "move",
-        target: "north gate",
+        subject: "밀수 화물",
+        quantity: 1,
+        action: "버려져 있다",
+        target: "안개 계곡",
         certainty: 0.75,
-        is_countable: true,
-        action_type: "unknown",
+        is_countable: false,
+        action_type: "state",
         raw_text: "",
         has_explicit_quantity: false,
         parse_confidence: 0.5,
@@ -363,7 +364,7 @@
       }
     }
 
-    var subjectMerged = subjects[0] || "늑대";
+    var subjectMerged = subjects[0] || "밀수 화물";
     var allSameSubject = true;
     for (var s = 1; s < subjects.length; s += 1) {
       if (subjects[s] !== subjects[0]) {
@@ -772,10 +773,10 @@
     var full = normalizeUserText(scenarioText);
     if (!full) {
       return {
-        subject: "wolf",
-        quantity: 3,
-        action: "move",
-        target: "north gate",
+        subject: "밀수 화물",
+        quantity: 1,
+        action: "버려져 있다",
+        target: "안개 계곡",
       };
     }
 
@@ -817,7 +818,7 @@
     var deathClause = normalizeActionPhrase(m[6]);
 
     var fact1 = {
-      subject: enemy || "늑대",
+      subject: enemy || "도적",
       quantity: qty != null ? qty : 1,
       action: "탈출",
       target: escapePlace || "현장",
@@ -1113,7 +1114,7 @@
     var actionCategoryFromPattern = extractedAction.category;
     var action = normalizeActionToken(actionToken);
 
-    var subject = tokens[0] || "늑대";
+    var subject = tokens[0] || "밀수 화물";
     var subjectMatch = raw.match(/^([^\d\s]+)\s*\d+\s*마리/);
     if (subjectMatch && subjectMatch[1]) {
       subject = subjectMatch[1];
@@ -1279,6 +1280,22 @@
           : null;
       var persistSession = String(formData.get("persistSession") || "") === "on";
       var runChain = String(formData.get("runChain") || "") === "on";
+      var usePlayerAsSender = String(formData.get("usePlayerAsSender") || "on") === "on";
+      var receiverProfileKey = String(formData.get("receiverProfileKey") || "scholar_alric");
+      var propagationPreset = String(formData.get("questPropagationPreset") || "");
+      if (propagationPreset.indexOf(":") >= 0) {
+        var presetParts = propagationPreset.split(":");
+        quantityMode = presetParts[1] || quantityMode;
+      }
+
+      var sessionKey = "ui-session";
+      var gameTick = Number(formData.get("gameTick"));
+      if (window.GameClock && !isNaN(gameTick)) {
+        window.GameClock.setTick(sessionKey, gameTick, { reason: "ui_form" });
+      }
+      var advanceTicks = Number(formData.get("advanceTicksAfterPropagate"));
+      var seedWorld = String(formData.get("seedWorldTruthFromFacts") || "") === "on";
+      var recordPkb = String(formData.get("recordPlayerKnowledge") || "on") === "on";
 
       var result = executeScenario({
         trustLevel: trustLevel,
@@ -1289,10 +1306,15 @@
         receiverReputation: receiverReputation,
         quantityMode: quantityMode,
         allowPartialTrust: allowPartialTrust,
+        usePlayerAsSender: usePlayerAsSender,
+        receiverProfileKey: receiverProfileKey,
+        reputationSessionKey: sessionKey,
         persistSession: persistSession,
-        sessionKey: "ui-session",
+        sessionKey: sessionKey,
         groundTruth: groundTruth,
-        currentTick: Date.now() % 100000,
+        seedWorldTruthFromFacts: seedWorld,
+        recordPlayerKnowledge: recordPkb,
+        advanceTicksAfterPropagate: !isNaN(advanceTicks) && advanceTicks > 0 ? advanceTicks : 0,
         infoTruthValue: {
           subject: primaryFact.subject,
           action: primaryFact.action,
@@ -1315,6 +1337,14 @@
         result.propagation.interpretedFacts || result.propagation.receiverInterpreted
       );
       outputKb.textContent = formatJSON(result.knowledgeBaseSnapshot);
+      if (outputKnowledgeLayers) {
+        outputKnowledgeLayers.textContent = formatJSON({
+          gameClock: result.gameClockSnapshot || null,
+          playerKnowledge: result.playerKnowledgeRecord || null,
+          knowledgeLayers: result.knowledgeLayersSnapshot || null,
+          anchorValidation: result.anchorValidation || (result.dialogue && result.dialogue.anchorValidation),
+        });
+      }
       if (outputAudit) {
         outputAudit.textContent = formatJSON({
           auditTrail: result.auditTrail || [],
@@ -1345,7 +1375,7 @@
           {
             quantityMode: quantityMode,
             allowPartialTrust: allowPartialTrust,
-            currentTick: (Date.now() % 100000) + 10,
+            currentTick: (window.GameClock ? window.GameClock.getTick(sessionKey) : 1000) + 10,
           }
         );
         outputChain.textContent = formatJSON({

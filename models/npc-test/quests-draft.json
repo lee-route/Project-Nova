@@ -13,7 +13,8 @@
       "플레이어↔NPC 평판 = reputation-system",
       "playerRepDelta.current_giver → 보고 대상 npcProfileRef",
       "playerRepDelta.village → villageRepDelta",
-      "sharedAcceptDialogueByTier = 퀘스트 공통 의뢰 대사 (평판 tier)"
+      "neutral tier → giver.acceptDialogue (의뢰인별), 그 외 tier → sharedAcceptDialogueByTier",
+      "runProcessSteps = dialogue/travel 스텁 + fact_input 시 runQuestTurnIn"
     ]
   },
 
@@ -243,12 +244,6 @@
       ]
     }
   ],
-
-  "_archivedQuests": {
-    "_comment": "이전 프로토타입(늑대·반군). 회귀 테스트 일부는 여전히 늑대 문장 사용",
-    "quest_report_wolf_escape": { "status": "archived", "title": "북문의 소동" },
-    "quest_report_rebel_chase": { "status": "archived", "title": "대초원의 추격" }
-  },
 
   "questInstanceTemplate": {
     "questId": "quest_abandoned_cargo",

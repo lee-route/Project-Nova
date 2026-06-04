@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-04T03:25:14.841Z",
+  "generatedAt": "2026-06-04T03:29:25.525Z",
   "questId": "quest_abandoned_cargo",
   "title": "밀수업자의 버려진 화물",
   "playerReportText": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
@@ -47,11 +47,8 @@
         "is_cargo_secured": true,
         "cargo_destination": "authority"
       },
-      "quantity": 1,
-      "certainty": 0.67,
-      "applied_rules": [
-        "credulity_certainty_blend"
-      ]
+      "quantity": 15,
+      "certainty": 0.67
     },
     {
       "giverId": "merchant_greedy",
@@ -62,11 +59,8 @@
         "is_cargo_secured": true,
         "cargo_destination": "authority"
       },
-      "quantity": 1,
-      "certainty": 0.67,
-      "applied_rules": [
-        "credulity_certainty_blend"
-      ]
+      "quantity": 15,
+      "certainty": 0.67
     },
     {
       "giverId": "scholar_alric",
@@ -77,11 +71,8 @@
         "is_cargo_secured": true,
         "cargo_destination": "authority"
       },
-      "quantity": 1,
-      "certainty": 0.67,
-      "applied_rules": [
-        "credulity_certainty_blend"
-      ]
+      "quantity": 12,
+      "certainty": 0.67
     }
   ],
   "note": "branch authority_path: qty>=10 & certainty>=0.6 | black_market_path: qty<=9"

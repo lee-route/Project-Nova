@@ -50,7 +50,16 @@ function main() {
   );
   assert(match.ok, "factMatch: " + match.reasons.join(", "));
 
+  const altMatch = runtime.evaluateFactMatch(
+    { subject: "밀수 화물", target: "안개 계곡", quantity: 1, certainty: 0.5, action_type: "state" },
+    runtime.getQuest(QUEST_ID).finalObjective.factMatchAlt
+  );
+  assert(altMatch.ok, "factMatchAlt");
+
   const reportHigh = "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다";
+  const reportLow = "안개 계곡에 밀수 화물이 버려져 있다. 마약초 다섯 개가 들어 있다";
+  const reportAltOnly = "안개 계곡에 밀수 화물이 버려져 있다";
+
   const guardRun = runtime.runQuestTurnIn({
     questId: QUEST_ID,
     giverId: "guard_timid",
@@ -61,13 +70,21 @@ function main() {
     reputationSessionKey: "qtest-guard",
   });
   assert(guardRun.completion.completed, "guard path should complete");
-  assert(
-    guardRun.outcomeBranch.branchId === "authority_path",
-    "guard dramatic expected authority, got " + guardRun.outcomeBranch.branchId
-  );
+  assert(guardRun.outcomeBranch.branchId === "authority_path", "guard authority");
   assert(guardRun.outcome.rewards.gold === 150, "authority gold");
 
-  const reportLow = "안개 계곡에 밀수 화물이 버려져 있다. 마약초 다섯 개가 들어 있다";
+  const merchantRun = runtime.runQuestTurnIn({
+    questId: QUEST_ID,
+    giverId: "merchant_greedy",
+    scenarioText: reportHigh,
+    engine,
+    parser,
+    sessionKey: "qtest-merchant",
+    reputationSessionKey: "qtest-merchant",
+  });
+  assert(merchantRun.completion.completed, "merchant should complete");
+  assert(merchantRun.outcomeBranch.branchId === "authority_path", "merchant high report authority");
+
   const scholarRun = runtime.runQuestTurnIn({
     questId: QUEST_ID,
     giverId: "scholar_alric",
@@ -78,15 +95,41 @@ function main() {
     reputationSessionKey: "qtest-scholar",
   });
   assert(scholarRun.completion.completed, "scholar path should complete");
-  assert(
-    scholarRun.outcomeBranch.branchId === "black_market_path",
-    "scholar faithful low qty expected black_market, got " + scholarRun.outcomeBranch.branchId
-  );
+  assert(scholarRun.outcomeBranch.branchId === "black_market_path", "scholar black_market");
   assert(scholarRun.outcome.rewards.gold === 300, "black_market gold");
 
+  const altRun = runtime.runQuestTurnIn({
+    questId: QUEST_ID,
+    giverId: "scholar_alric",
+    scenarioText: reportAltOnly,
+    engine,
+    parser,
+    sessionKey: "qtest-alt",
+    reputationSessionKey: "qtest-alt",
+  });
+  assert(altRun.completion.completed, "alt-only report should complete via factMatchAlt");
+
+  const blockedRun = runtime.runQuestTurnIn({
+    questId: QUEST_ID,
+    giverId: "guard_timid",
+    scenarioText: "오늘 날씨가 좋다",
+    engine,
+    parser,
+    sessionKey: "qtest-fail",
+    reputationSessionKey: "qtest-fail",
+  });
+  assert(!blockedRun.completion.completed, "irrelevant report should not complete");
+
+  const branch = runtime.pickOutcomeBranch(
+    [{ truth_value: { quantity: 8, certainty: 0.35 } }],
+    runtime.getQuest(QUEST_ID)
+  );
+  assert(branch.branchId === "fallback", "mid metrics should hit outcomeFallback, got " + branch.branchId);
+
   console.log("quest-test: all passed");
-  console.log("  guard branch:", guardRun.outcomeBranch.branchId, "qty", guardRun.outcomeBranch.metrics.quantity);
-  console.log("  scholar branch:", scholarRun.outcomeBranch.branchId, "qty", scholarRun.outcomeBranch.metrics.quantity);
+  console.log("  guard:", guardRun.outcomeBranch.branchId, "qty", guardRun.outcomeBranch.metrics.quantity);
+  console.log("  merchant:", merchantRun.outcomeBranch.branchId, "qty", merchantRun.outcomeBranch.metrics.quantity);
+  console.log("  scholar low:", scholarRun.outcomeBranch.branchId, "qty", scholarRun.outcomeBranch.metrics.quantity);
 }
 
 main();

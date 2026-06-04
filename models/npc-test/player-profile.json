@@ -1,8 +1,21 @@
 {
-  "version": 1,
+  "version": 2,
+  "primaryQuestId": "quest_abandoned_cargo",
+  "_meta": {
+    "purpose": "플레이어 전파 액터 + 평판 세션 초기값",
+    "loadVia": "data-loader.js → QuestSystem.registerProfiles",
+    "pairedFiles": ["reputation-config.json", "npcs.json"],
+    "editorNotes": [
+      "propagationProfile = usePlayerAsSender 시 왜곡 가중(낮은 fear/hostility)",
+      "defaultQuantityMode = 플레이어 기본 보고 스타일(faithful)",
+      "initialNpcReputation 키는 reputation-config.npcKeys 와 동일해야 함"
+    ]
+  },
   "player": {
     "id": "player",
+    "profileKey": "player",
     "displayName": "카엘",
+    "role": "protagonist",
     "propagationProfile": {
       "persona": "witness",
       "fear": 0.1,

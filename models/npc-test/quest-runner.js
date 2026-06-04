@@ -4,9 +4,17 @@
   var questReportText = document.querySelector("#quest-report-text");
   var runQuestBtn = document.querySelector("#run-quest-turn-in");
   var compareQuestBtn = document.querySelector("#run-quest-compare");
+  var processStepsBtn = document.querySelector("#run-quest-process-steps");
+  var acceptQuestBtn = document.querySelector("#run-quest-accept");
+  var nextStepBtn = document.querySelector("#run-quest-next-step");
+  var fullFlowBtn = document.querySelector("#run-quest-full-flow");
+  var resetQuestBtn = document.querySelector("#run-quest-reset");
   var outQuest = document.querySelector("#out-quest");
   var outQuestCompare = document.querySelector("#out-quest-compare");
   var outAcceptDialogue = document.querySelector("#out-accept-dialogue");
+  var outQuestSteps = document.querySelector("#out-quest-steps");
+  var outQuestFlow = document.querySelector("#out-quest-flow");
+  var outGameState = document.querySelector("#out-game-state");
   var refreshAcceptBtn = document.querySelector("#refresh-accept-dialogue");
 
   var parserApi = {
@@ -43,6 +51,15 @@
       : "default";
   }
 
+  function questSessionKey() {
+    return "ui-quest-" + repSessionKey();
+  }
+
+  function refreshGameStatePanel() {
+    if (!outGameState || !window.QuestGameState) return;
+    outGameState.textContent = formatJSON(window.QuestGameState.snapshot(questSessionKey()));
+  }
+
   function refreshAcceptDialoguePreview() {
     if (!outAcceptDialogue || !window.QuestRuntime || !giverSelect || !questSelect) return;
     try {
@@ -51,7 +68,7 @@
         giverSelect.value,
         { sessionKey: repSessionKey(), reputationSessionKey: repSessionKey() }
       );
-      outAcceptDialogue.textContent = JSON.stringify(resolved, null, 2);
+      outAcceptDialogue.textContent = formatJSON(resolved);
     } catch (err) {
       outAcceptDialogue.textContent = "Error: " + (err.message || err);
     }
@@ -90,18 +107,18 @@
         "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다";
     }
     refreshGiverOptions();
+    refreshGameStatePanel();
   }
 
   function runSingleGiver(giverId, scenarioText) {
-    var sessionKey = repSessionKey();
     return window.QuestRuntime.runQuestTurnIn({
       questId: questSelect.value,
       giverId: giverId,
       scenarioText: scenarioText,
       engine: window.QuestSystem,
       parser: parserApi,
-      sessionKey: sessionKey,
-      reputationSessionKey: sessionKey,
+      sessionKey: questSessionKey() + "-" + giverId,
+      reputationSessionKey: repSessionKey(),
     });
   }
 
@@ -112,37 +129,37 @@
       var run = runSingleGiver(giverSelect.value, report);
       function printQuestResult(engineResult) {
         outQuest.textContent = formatJSON({
-        quest: run.questId,
-        giver: run.giverId,
-        turnIn: run.turnInProfileKey,
-        completed: run.completion.completed,
-        completion: run.completion,
-        outcome: run.outcome,
-        blocked: engineResult.propagation.blocked,
-        dialogue: engineResult.dialogue,
-        interpretedFacts: (run.engineResult.propagation.interpretedFacts || []).map(function (item) {
-          var tv = item.truth_value;
-          return {
-            subject: tv.subject,
-            action: tv.action,
-            target: tv.target,
-            object: tv.object,
-            quantity: tv.quantity,
-            certainty: tv.certainty,
-            action_type: tv.action_type,
-            applied_rules: item.metadata.applied_rules,
-          };
-        }),
-        experienceFlavor: run.experience.expectedDistortionFlavor,
-        reputationResult: run.reputationResult,
-        outcomeBranch: run.outcomeBranch,
-        playerReputation: run.engineResult.playerReputationSnapshot,
-      });
+          quest: run.questId,
+          giver: run.giverId,
+          turnIn: run.turnInProfileKey,
+          completed: run.completion.completed,
+          completion: run.completion,
+          outcome: run.outcome,
+          outcomeBranch: run.outcomeBranch,
+          blocked: engineResult.propagation.blocked,
+          dialogue: engineResult.dialogue,
+          interpretedFacts: (run.engineResult.propagation.interpretedFacts || []).map(function (item) {
+            var tv = item.truth_value;
+            return {
+              subject: tv.subject,
+              action: tv.action,
+              target: tv.target,
+              quantity: tv.quantity,
+              certainty: tv.certainty,
+              applied_rules: item.metadata.applied_rules,
+            };
+          }),
+          experienceFlavor: run.experience.expectedDistortionFlavor,
+          reputationResult: run.reputationResult,
+          gameStateApplied: window.QuestGameState
+            ? window.QuestGameState.applyTurnInOutcome(questSessionKey(), run)
+            : null,
+        });
+        refreshGameStatePanel();
       }
       if (typeof window.refreshReputationPanel === "function") {
         window.refreshReputationPanel();
       }
-
       if (
         window.LlmAdapter &&
         window.LlmAdapter.isLive() &&
@@ -160,6 +177,9 @@
             printQuestResult(run.engineResult);
           });
         return;
+      }
+      if (window.QuestGameState && run.completion.completed) {
+        window.QuestGameState.applyTurnInOutcome(questSessionKey(), run);
       }
       printQuestResult(run.engineResult);
     } catch (err) {
@@ -184,9 +204,10 @@
           completed: run.completion.completed,
           quantity: snap.quantity,
           certainty: Number(snap.certainty && snap.certainty.toFixed ? snap.certainty.toFixed(2) : snap.certainty),
-          action_type: snap.action_type,
           blocked: run.engineResult.propagation.blocked,
-          sameOutcome: run.completion.completed ? run.outcome : null,
+          branchId: run.outcomeBranch && run.outcomeBranch.branchId,
+          gold: run.outcome && run.outcome.rewards && run.outcome.rewards.gold,
+          worldFlags: run.outcome && run.outcome.worldFlags,
         });
       } catch (e) {
         rows.push({ giver: opt.giverId, error: e.message });
@@ -196,8 +217,105 @@
       questId: questId,
       report: report,
       paths: rows,
-      note: "completed 경로는 동일 outcome (gold/xp/worldFlags)",
+      note: "의뢰인별 quantityMode·왜곡 → interpreted metrics·outcomes[] 분기가 달라질 수 있음",
     });
+  }
+
+  function onRunProcessSteps() {
+    if (!outQuestSteps || !window.QuestRuntime) return;
+    try {
+      var report = questReportText ? questReportText.value : "";
+      var run = window.QuestRuntime.runProcessSteps({
+        questId: questSelect.value,
+        giverId: giverSelect.value,
+        scenarioText: report,
+        engine: window.QuestSystem,
+        parser: parserApi,
+        sessionKey: questSessionKey(),
+        reputationSessionKey: repSessionKey(),
+      });
+      if (window.QuestGameState && run.turnInResult && run.turnInResult.completion.completed) {
+        window.QuestGameState.applyTurnInOutcome(questSessionKey(), run.turnInResult);
+      }
+      outQuestSteps.textContent = formatJSON(run);
+      refreshGameStatePanel();
+    } catch (err) {
+      outQuestSteps.textContent = "Error: " + (err.message || String(err));
+    }
+  }
+
+  function onAcceptQuest() {
+    if (!outQuestFlow || !window.QuestRuntime) return;
+    try {
+      var res = window.QuestRuntime.acceptQuest(questSelect.value, giverSelect.value, {
+        sessionKey: questSessionKey(),
+        reputationSessionKey: repSessionKey(),
+      });
+      outQuestFlow.textContent = formatJSON(res);
+      refreshGameStatePanel();
+    } catch (err) {
+      outQuestFlow.textContent = "Error: " + (err.message || String(err));
+    }
+  }
+
+  function onNextStep() {
+    if (!outQuestFlow || !window.QuestRuntime) return;
+    try {
+      var report = questReportText ? questReportText.value : "";
+      var res = window.QuestRuntime.advanceProcessStep({
+        sessionKey: questSessionKey(),
+        scenarioText: report,
+        engine: window.QuestSystem,
+        parser: parserApi,
+        reputationSessionKey: repSessionKey(),
+      });
+      var flow = window.QuestRuntime.getQuestFlow(questSessionKey());
+      outQuestFlow.textContent = formatJSON({ advance: res, log: flow && flow.log });
+      refreshGameStatePanel();
+      if (typeof window.refreshReputationPanel === "function") {
+        window.refreshReputationPanel();
+      }
+    } catch (err) {
+      outQuestFlow.textContent = "Error: " + (err.message || String(err));
+    }
+  }
+
+  function onFullFlow() {
+    if (!outQuestFlow || !window.QuestRuntime) return;
+    try {
+      var report = questReportText ? questReportText.value : "";
+      var res = window.QuestRuntime.runQuestFlow({
+        questId: questSelect.value,
+        giverId: giverSelect.value,
+        scenarioText: report,
+        engine: window.QuestSystem,
+        parser: parserApi,
+        sessionKey: questSessionKey(),
+        reputationSessionKey: repSessionKey(),
+      });
+      outQuestFlow.textContent = formatJSON(res);
+      if (outQuestSteps && res.steps) {
+        outQuestSteps.textContent = formatJSON(res.steps);
+      }
+      refreshGameStatePanel();
+      if (typeof window.refreshReputationPanel === "function") {
+        window.refreshReputationPanel();
+      }
+    } catch (err) {
+      outQuestFlow.textContent = "Error: " + (err.message || String(err));
+    }
+  }
+
+  function onResetQuest() {
+    if (window.QuestRuntime) {
+      window.QuestRuntime.clearQuestFlow(questSessionKey());
+    }
+    if (window.QuestGameState) {
+      window.QuestGameState.clearState(questSessionKey());
+      window.QuestGameState.getState(questSessionKey());
+    }
+    if (outQuestFlow) outQuestFlow.textContent = "퀘스트 세션 초기화됨";
+    refreshGameStatePanel();
   }
 
   if (questSelect) {
@@ -214,6 +332,21 @@
   }
   if (compareQuestBtn) {
     compareQuestBtn.addEventListener("click", onCompareQuest);
+  }
+  if (processStepsBtn) {
+    processStepsBtn.addEventListener("click", onRunProcessSteps);
+  }
+  if (acceptQuestBtn) {
+    acceptQuestBtn.addEventListener("click", onAcceptQuest);
+  }
+  if (nextStepBtn) {
+    nextStepBtn.addEventListener("click", onNextStep);
+  }
+  if (fullFlowBtn) {
+    fullFlowBtn.addEventListener("click", onFullFlow);
+  }
+  if (resetQuestBtn) {
+    resetQuestBtn.addEventListener("click", onResetQuest);
   }
 
   if (document.readyState === "loading") {

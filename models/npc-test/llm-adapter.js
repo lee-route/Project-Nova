@@ -100,7 +100,22 @@
     );
   }
 
-  function wrapDialogueOutput(systemPrompt, groundedContext, npcSpeech, provider) {
+  function resolveAnchor() {
+    return global.LlmFactAnchor || null;
+  }
+
+  function attachAnchorValidation(out, groundedContext, opts) {
+    var anchor = resolveAnchor();
+    if (!anchor || typeof anchor.validateSpeech !== "function") {
+      out.anchorValidation = { ok: true, skipped: true };
+      return out;
+    }
+    var validation = anchor.validateSpeech(out.npcSpeech, groundedContext, opts);
+    out.anchorValidation = validation;
+    return out;
+  }
+
+  function wrapDialogueOutput(systemPrompt, groundedContext, npcSpeech, provider, anchorOpts) {
     var dataJson = JSON.stringify(groundedContext.dataOnly || {}, null, 2);
     var finalSpeech =
       "[System Guardrail] " +
@@ -109,11 +124,12 @@
       dataJson +
       "\n[NPC Speech]\n" +
       npcSpeech;
-    return {
+    var out = {
       finalSpeech: finalSpeech,
       npcSpeech: npcSpeech,
       provider: provider || "mock",
     };
+    return attachAnchorValidation(out, groundedContext, anchorOpts);
   }
 
   function mockGenerate(params) {
@@ -238,7 +254,27 @@
     } else {
       throw new Error("Unknown provider: " + runtime.provider);
     }
-    return wrapDialogueOutput(params.systemPrompt, params.groundedContext, rawText, runtime.provider);
+    var wrapped = wrapDialogueOutput(
+      params.systemPrompt,
+      params.groundedContext,
+      rawText,
+      runtime.provider,
+      { minScore: params.minAnchorScore }
+    );
+    if (
+      wrapped.anchorValidation &&
+      !wrapped.anchorValidation.ok &&
+      params.strictAnchor !== false
+    ) {
+      var fallback = mockGenerate(params);
+      fallback.anchorValidation = {
+        ok: false,
+        usedFallback: true,
+        live: wrapped.anchorValidation,
+      };
+      return fallback;
+    }
+    return wrapped;
   }
 
   function generateSync(params) {
@@ -266,6 +302,8 @@
     d.finalSpeech = out.finalSpeech;
     d.npcSpeech = out.npcSpeech;
     d.llmProvider = out.provider;
+    d.anchorValidation = out.anchorValidation;
+    engineResult.anchorValidation = out.anchorValidation;
     return engineResult;
   }
 
@@ -278,6 +316,10 @@
     generateAsync: generateAsync,
     mockGenerate: mockGenerate,
     enrichDialogueResult: enrichDialogueResult,
+    validateSpeech: function (speech, ctx, opts) {
+      var anchor = resolveAnchor();
+      return anchor ? anchor.validateSpeech(speech, ctx, opts) : { ok: true, skipped: true };
+    },
     PROVIDERS: ["mock", "openai", "openai_compatible", "anthropic"],
   };
 })(typeof window !== "undefined" ? window : globalThis);

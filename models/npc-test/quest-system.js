@@ -26,6 +26,7 @@ const PERSONA_DISTORTION_PROFILES = {
 
 const SESSION_STORE = new Map();
 
+/** Fallback when registerProfiles() not called; keep in sync with npcs.json */
 const BUILTIN_PROFILE_REGISTRY = {
   player: {
     id: "player",
@@ -34,37 +35,53 @@ const BUILTIN_PROFILE_REGISTRY = {
     defaultQuantityMode: "faithful",
   },
   npcs: {
-    scout: {
-      id: "NPC_SCOUT",
-      displayName: "정찰병",
-      persona: "hotblood_hunter",
-      stats: { fear: 0.5, hostility: 0.4, trust: 0.6, credulity: 0.7 },
-      reputation: { 늑대: 0.5, 촌장: 0.7, 상인: 0.5 },
-      defaultTrustToPlayer: 0.7,
-    },
-    mayor: {
-      id: "NPC_MAYOR",
-      displayName: "촌장",
-      persona: "calm_scholar",
-      stats: { fear: 0.35, hostility: 0.2, trust: 0.7, credulity: 0.55 },
-      reputation: { 촌장: 0.9, 늑대: 0.4, 상인: 0.65 },
-      defaultTrustToPlayer: 0.72,
-    },
-    merchant: {
-      id: "NPC_MERCHANT",
-      displayName: "상인",
-      persona: "cynical_merchant",
-      stats: { fear: 0.45, hostility: 0.35, trust: 0.6, credulity: 0.88 },
-      reputation: { 상인: 0.85, 늑대: 0.25, 촌장: 0.55 },
+    guard_timid: {
+      id: "NPC_GUARD_TIMID",
+      displayName: "소심한 경비",
+      persona: "fearful_guard",
+      stats: { fear: 0.88, hostility: 0.5, trust: 0.5, credulity: 0.8 },
+      reputation: {
+        밀수: 0.12,
+        "밀수 화물": 0.15,
+        화물: 0.18,
+        마약초: 0.08,
+        "안개 계곡": 0.22,
+        도적: 0.28,
+        촌장: 0.75,
+      },
       defaultTrustToPlayer: 0.58,
     },
-    guard: {
-      id: "NPC_GUARD",
-      displayName: "경비",
-      persona: "fearful_guard",
-      stats: { fear: 0.82, hostility: 0.55, trust: 0.55, credulity: 0.75 },
-      reputation: { 늑대: 0.2, 촌장: 0.75, 상인: 0.45 },
-      defaultTrustToPlayer: 0.65,
+    merchant_greedy: {
+      id: "NPC_MERCHANT_GREEDY",
+      displayName: "탐욕한 상인",
+      persona: "cynical_merchant",
+      stats: { fear: 0.4, hostility: 0.4, trust: 0.55, credulity: 0.92 },
+      reputation: {
+        밀수: 0.38,
+        "밀수 화물": 0.42,
+        화물: 0.52,
+        마약초: 0.48,
+        "안개 계곡": 0.4,
+        도적: 0.32,
+        상인: 0.9,
+      },
+      defaultTrustToPlayer: 0.52,
+    },
+    scholar_alric: {
+      id: "NPC_SCHOLAR_ALRIC",
+      displayName: "학자 알릭",
+      persona: "calm_scholar",
+      stats: { fear: 0.3, hostility: 0.15, trust: 0.75, credulity: 0.5 },
+      reputation: {
+        밀수: 0.58,
+        "밀수 화물": 0.62,
+        화물: 0.64,
+        마약초: 0.72,
+        "안개 계곡": 0.68,
+        도적: 0.45,
+        촌장: 0.85,
+      },
+      defaultTrustToPlayer: 0.7,
     },
   },
 };
@@ -409,9 +426,17 @@ class KnowledgeBase {
       pushRule(entry.metadata, newType === "state" ? "kb_conflict_threat_down" : "kb_conflict_calm_down");
     }
 
-    this.entries.set(copy.info_id, copy);
-    this.mergeIndex.set(mergeKey, copy.info_id);
-    return { action: "insert", info_id: copy.info_id, merge_key: mergeKey };
+    let storageId = copy.info_id;
+    if (this.entries.has(storageId)) {
+      const occupied = this.entries.get(storageId);
+      if (kbMergeKey(occupied) !== mergeKey) {
+        storageId = mergeKey + "::" + storageId;
+        copy.info_id = storageId;
+      }
+    }
+    this.entries.set(storageId, copy);
+    this.mergeIndex.set(mergeKey, storageId);
+    return { action: "insert", info_id: storageId, merge_key: mergeKey };
   }
 
   listWithDecay(currentTick) {
@@ -506,6 +531,57 @@ function snapshotTruth(tv) {
   };
 }
 
+function resolveHopDepth(chain) {
+  const c = chain || [];
+  return Math.max(0, c.length - 1);
+}
+
+/**
+ * source_chain / hop_depth 기반 전파 왜곡 (다단 소문·간접 정보)
+ */
+function applySourceChainEffects(atom, npcStats, phase) {
+  const meta = atom.metadata || (atom.metadata = {});
+  const tv = atom.truth_value;
+  const chain = (npcStats.sourceChain || meta.source_chain || []).slice();
+  const hopDepth =
+    npcStats.hopDepth != null ? Number(npcStats.hopDepth) : resolveHopDepth(chain);
+  meta.source_chain = chain;
+  meta.hop_depth = hopDepth;
+
+  if (hopDepth < 1) return atom;
+
+  let certainty = Number(tv.certainty ?? 0.5);
+
+  if (hopDepth >= 1) {
+    pushRule(meta, "source_chain_secondhand");
+    certainty = clamp(
+      Number((certainty * (0.92 - 0.03 * Math.min(hopDepth, 3))).toFixed(2)),
+      DEFAULTS.MIN_CERTAINTY,
+      DEFAULTS.MAX_CERTAINTY
+    );
+  }
+  if (hopDepth >= 2) {
+    pushRule(meta, "source_chain_multi_hop");
+    certainty = clamp(
+      Number((certainty * 0.9).toFixed(2)),
+      DEFAULTS.MIN_CERTAINTY,
+      DEFAULTS.MAX_CERTAINTY
+    );
+  }
+  if (hopDepth >= 3 && tv.is_countable && phase === "reinterpret") {
+    const qty = Number(tv.quantity ?? 1);
+    tv.quantity = clamp(
+      Math.round(qty * (1 + 0.06 * Math.min(hopDepth - 2, 2))),
+      DEFAULTS.MIN_Q,
+      DEFAULTS.MAX_Q
+    );
+    pushRule(meta, "source_chain_qty_doubt");
+  }
+
+  tv.certainty = certainty;
+  return atom;
+}
+
 function toGroundedFact(tv, meta = {}) {
   return {
     subject: tv.subject,
@@ -519,6 +595,8 @@ function toGroundedFact(tv, meta = {}) {
     applied_rules: meta.applied_rules || [],
     bundle_notes: meta.bundle_notes || [],
     rumor: Boolean(meta.rumor),
+    source_chain: (meta.source_chain || []).slice(),
+    hop_depth: Number(meta.hop_depth ?? 0),
   };
 }
 
@@ -572,6 +650,7 @@ function interpretedToFactInputs(interpretedFacts) {
 
 function distortInformation(rawInfo, npcStats) {
   const distorted = deepCopy(rawInfo);
+  applySourceChainEffects(distorted, npcStats, "distort");
   const tv = distorted.truth_value;
   const subject = tv.subject;
   const quantity = Number(tv.quantity ?? 1);
@@ -702,6 +781,7 @@ function distortInformation(rawInfo, npcStats) {
 
 function reinterpretInfo(distortedInfo, receiverStats) {
   const interpreted = deepCopy(distortedInfo);
+  applySourceChainEffects(interpreted, receiverStats, "reinterpret");
   const tv = interpreted.truth_value;
   const quantity = Number(tv.quantity ?? 1);
   const actionType = String(tv.action_type || "unknown");
@@ -808,6 +888,7 @@ function applyBundleCoherence(interpretedFacts) {
   let hasContradiction = false;
 
   const placeTokens = [
+    "안개 계곡",
     "북문",
     "남문",
     "마을",
@@ -978,6 +1059,10 @@ function propagateFactBundle(sender, receiver, originalInfo, factsInput, options
     const atom = factInputToAtom(fact, originalInfo, i);
     const inputSnapshot = snapshotTruth(atom.truth_value);
 
+    const baseChain = (atom.metadata.source_chain || []).slice();
+    const senderChain = [...baseChain, sender.name];
+    const receiverChain = [...baseChain, sender.name, receiver.name];
+
     const senderContext = {
       ...senderWeighted,
       name: sender.name,
@@ -986,6 +1071,8 @@ function propagateFactBundle(sender, receiver, originalInfo, factsInput, options
       subjectReputation: sender.getSubjectReputation(fact.subject),
       quantityMode,
       trustDegradeMultiplier,
+      sourceChain: senderChain,
+      hopDepth: resolveHopDepth(senderChain),
     };
     const receiverContext = {
       ...receiverWeighted,
@@ -993,15 +1080,14 @@ function propagateFactBundle(sender, receiver, originalInfo, factsInput, options
       subjectReputation: receiver.getSubjectReputation(fact.subject),
       quantityMode,
       trustDegradeMultiplier,
+      sourceChain: receiverChain,
+      hopDepth: resolveHopDepth(receiverChain),
     };
 
     const senderDistorted = distortInformation(atom, senderContext);
     const receiverInterpreted = reinterpretInfo(senderDistorted, receiverContext);
-    receiverInterpreted.metadata.source_chain = [
-      ...(atom.metadata.source_chain || []),
-      sender.name,
-      receiver.name,
-    ];
+    receiverInterpreted.metadata.source_chain = receiverChain;
+    receiverInterpreted.metadata.hop_depth = resolveHopDepth(receiverChain);
     distortedFacts.push(senderDistorted);
     interpretedFacts.push(receiverInterpreted);
 
@@ -1149,10 +1235,12 @@ function buildContextGrounding(distortedBundle) {
     if (f.applied_rules !== undefined && f.subject !== undefined) {
       return f;
     }
-    return toGroundedFact(f, {
-      applied_rules: f.applied_rules,
-      bundle_notes: f.bundle_notes,
-      rumor: f.rumor,
+    return toGroundedFact(f.truth_value || f, {
+      applied_rules: f.applied_rules || (f.metadata && f.metadata.applied_rules),
+      bundle_notes: f.bundle_notes || (f.metadata && f.metadata.bundle_notes),
+      rumor: f.rumor || (f.metadata && f.metadata.rumor),
+      source_chain: f.source_chain || (f.metadata && f.metadata.source_chain),
+      hop_depth: f.hop_depth != null ? f.hop_depth : f.metadata && f.metadata.hop_depth,
     });
   });
   return {
@@ -1345,8 +1433,8 @@ function getScenario(overrides = {}) {
 }
 
 function createBaseScenario(overrides = {}) {
-  const senderKey = overrides.senderProfileKey || "guard";
-  const receiverKey = overrides.receiverProfileKey || "merchant";
+  const senderKey = overrides.senderProfileKey || "guard_timid";
+  const receiverKey = overrides.receiverProfileKey || "scholar_alric";
   const sender = overrides.usePlayerAsSender
     ? createPlayerActor()
     : createNpcFromProfile(senderKey);
@@ -1380,8 +1468,8 @@ function createBaseScenario(overrides = {}) {
 function executeScenario(overrides = {}) {
   let { info, sender, receiver } = getScenario(overrides);
 
-  if (overrides.usePlayerAsSender) {
-    const receiverKey = overrides.receiverProfileKey || "merchant";
+  if (overrides.usePlayerAsSender && !overrides.persistSession) {
+    const receiverKey = overrides.receiverProfileKey || "scholar_alric";
     sender = createPlayerActor();
     receiver = createNpcFromProfile(receiverKey);
     const trust = resolveTrustToReceiver(sender, receiver, receiverKey, overrides);
@@ -1389,9 +1477,17 @@ function executeScenario(overrides = {}) {
     const playerName = getProfileRegistry().player.displayName;
     info.metadata.origin = playerName;
     info.metadata.source = playerName;
-  } else if (overrides.receiverProfileKey || overrides.senderProfileKey) {
-    const receiverKey = overrides.receiverProfileKey || receiver.profileKey || "merchant";
-    const senderKey = overrides.senderProfileKey || sender.profileKey || "guard";
+  } else if (overrides.usePlayerAsSender && overrides.persistSession) {
+    sender = createPlayerActor();
+    const receiverKey = overrides.receiverProfileKey || receiver.profileKey || "scholar_alric";
+    const trust = resolveTrustToReceiver(sender, receiver, receiverKey, overrides);
+    sender.setTrustLevel(receiver.id, trust);
+    const playerName = getProfileRegistry().player.displayName;
+    info.metadata.origin = playerName;
+    info.metadata.source = playerName;
+  } else if (!overrides.persistSession && (overrides.receiverProfileKey || overrides.senderProfileKey)) {
+    const receiverKey = overrides.receiverProfileKey || receiver.profileKey || "scholar_alric";
+    const senderKey = overrides.senderProfileKey || sender.profileKey || "guard_timid";
     sender = createNpcFromProfile(senderKey);
     receiver = createNpcFromProfile(receiverKey);
     const trust = resolveTrustToReceiver(sender, receiver, receiverKey, overrides);
@@ -1439,9 +1535,32 @@ function executeScenario(overrides = {}) {
     sender.setTrustLevel(receiver.id, overrides.trustLevel);
   }
 
-  const currentTick = Number(overrides.currentTick ?? info.metadata.creation_tick ?? 0);
+  const sessionKey = String(overrides.sessionKey || "default");
+  const GameClock =
+    (typeof window !== "undefined" && window.GameClock) ||
+    (typeof globalThis !== "undefined" && globalThis.GameClock) ||
+    null;
+  const WorldTruth =
+    (typeof window !== "undefined" && window.WorldTruth) ||
+    (typeof globalThis !== "undefined" && globalThis.WorldTruth) ||
+    null;
+  const PlayerKnowledge =
+    (typeof window !== "undefined" && window.PlayerKnowledge) ||
+    (typeof globalThis !== "undefined" && globalThis.PlayerKnowledge) ||
+    null;
+
+  let currentTick = Number(overrides.currentTick ?? info.metadata.creation_tick ?? 0);
+  if (GameClock) {
+    currentTick = GameClock.resolveTick({ ...overrides, sessionKey });
+  }
   info.metadata.creation_tick = currentTick;
   info.metadata.last_updated_tick = currentTick;
+
+  if (WorldTruth && overrides.worldTruthFacts && overrides.worldTruthFacts.length) {
+    WorldTruth.setWorldFacts(sessionKey, overrides.worldTruthFacts, currentTick, "override");
+  } else if (WorldTruth && overrides.seedWorldTruthFromFacts && (overrides.facts || []).length) {
+    WorldTruth.seedFromParserFacts(sessionKey, overrides.facts, currentTick);
+  }
 
   const propagation = propagateFactBundle(sender, receiver, info, overrides.facts || null, {
     quantityMode: overrides.quantityMode === "faithful" ? "faithful" : "dramatic",
@@ -1462,6 +1581,8 @@ function executeScenario(overrides = {}) {
         applied_rules: item.metadata.applied_rules || [],
         bundle_notes: item.metadata.bundle_notes || [],
         rumor: item.metadata.rumor,
+        source_chain: item.metadata.source_chain || [],
+        hop_depth: item.metadata.hop_depth,
       })
     );
     interpretedFacts.forEach((f, i) => {
@@ -1481,8 +1602,57 @@ function executeScenario(overrides = {}) {
   let playerReputationSnapshot = null;
   if (typeof window !== "undefined" && window.ReputationSystem && overrides.usePlayerAsSender) {
     playerReputationSnapshot = window.ReputationSystem.snapshot(
-      overrides.reputationSessionKey || overrides.sessionKey || "default"
+      overrides.reputationSessionKey || sessionKey
     );
+  }
+
+  let playerKnowledgeRecord = null;
+  if (PlayerKnowledge && overrides.recordPlayerKnowledge !== false) {
+    if (overrides.usePlayerAsSender) {
+      playerKnowledgeRecord = PlayerKnowledge.recordFromPropagation(
+        sessionKey,
+        { propagation, sender, receiver },
+        { tick: currentTick, usePlayerAsSender: true, questId: overrides.questId }
+      );
+    } else if (receiver.id === "player" || overrides.playerIsReceiver) {
+      playerKnowledgeRecord = PlayerKnowledge.recordFromPropagation(
+        sessionKey,
+        { propagation, sender, receiver },
+        { tick: currentTick, acquisition: "heard", questId: overrides.questId }
+      );
+    }
+  }
+
+  let gameClockSnapshot = null;
+  if (GameClock) {
+    if (overrides.advanceTicksAfterPropagate) {
+      gameClockSnapshot = GameClock.afterPropagation(sessionKey, {
+        advanceTicksAfterPropagate: overrides.advanceTicksAfterPropagate,
+        reason: "executeScenario",
+      });
+    } else {
+      gameClockSnapshot = GameClock.snapshot(sessionKey);
+    }
+  }
+
+  let knowledgeLayersSnapshot = null;
+  if (PlayerKnowledge) {
+    knowledgeLayersSnapshot = PlayerKnowledge.snapshotAll(sessionKey);
+  }
+
+  let anchorValidation = null;
+  if (dialogue && !propagation.blocked) {
+    const Anchor =
+      (typeof window !== "undefined" && window.LlmFactAnchor) ||
+      (typeof globalThis !== "undefined" && globalThis.LlmFactAnchor) ||
+      null;
+    if (Anchor && typeof Anchor.validateSpeech === "function") {
+      anchorValidation = Anchor.validateSpeech(
+        dialogue.npcSpeech || "",
+        dialogue.context || { facts: dialogue.engineData && dialogue.engineData.facts }
+      );
+      dialogue.anchorValidation = anchorValidation;
+    }
   }
 
   return {
@@ -1500,8 +1670,12 @@ function executeScenario(overrides = {}) {
     auditDiff: propagation.auditDiff || [],
     bundleContext: propagation.bundleContext || { hasContradiction: false, notes: [] },
     groundTruthReport,
-    sessionKey: overrides.sessionKey || "default",
+    sessionKey,
     persistSession: Boolean(overrides.persistSession),
+    gameClockSnapshot,
+    knowledgeLayersSnapshot,
+    playerKnowledgeRecord,
+    anchorValidation,
   };
 }
 
@@ -1524,6 +1698,8 @@ window.QuestSystem = {
   createNpcFromProfile,
   createPlayerActor,
   toGroundedFact,
+  applySourceChainEffects,
+  resolveHopDepth,
   clearSession: (key) => SESSION_STORE.delete(String(key || "default")),
   DEFAULTS,
   PERSONA_DISTORTION_PROFILES,

@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "note": "언리얼 브릿지 미구현. 동일 계약으로 HTTP/Blueprint 연동 시 참고.",
+  "primaryQuestId": "quest_abandoned_cargo",
+  "endpoints": {
+    "getAcceptDialogue": {
+      "in": { "questId": "string", "giverId": "guard_timid|merchant_greedy|scholar_alric", "sessionKey": "string" },
+      "out": { "line": "string", "canAccept": "boolean", "tier": "object", "source": "string" }
+    },
+    "runQuestTurnIn": {
+      "in": {
+        "questId": "string",
+        "giverId": "string",
+        "scenarioText": "string",
+        "sessionKey": "string",
+        "reputationSessionKey": "string"
+      },
+      "out": {
+        "completion": { "completed": "boolean", "matches": "array" },
+        "outcomeBranch": { "branchId": "authority_path|black_market_path|fallback", "metrics": { "quantity": "number", "certainty": "number" } },
+        "outcome": {
+          "rewards": { "gold": "number", "xp": "number" },
+          "worldFlags": { "is_cargo_secured": "boolean", "cargo_destination": "authority|black_market|unknown" },
+          "playerRepDelta": "object"
+        }
+      }
+    },
+    "runQuestFlow": {
+      "in": "acceptQuest + advanceProcessStep × N + scenarioText on fact_input",
+      "out": { "ok": "boolean", "steps": "array", "gameState": "QuestGameState snapshot" }
+    }
+  },
+  "gameStateSnapshot": {
+    "gold": 0,
+    "xp": 0,
+    "villageReputation": 50,
+    "worldFlags": {},
+    "activeQuest": null,
+    "questHistory": []
+  },
+  "exampleReportHigh": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+  "exampleReportLow": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 다섯 개가 들어 있다"
+}

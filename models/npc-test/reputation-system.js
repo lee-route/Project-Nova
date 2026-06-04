@@ -25,10 +25,9 @@
       version: 1,
       village: { min: 0, max: 100, default: 50 },
       npcKeys: {
-        mayor: { label: "촌장", default: 0.5 },
-        merchant: { label: "상인", default: 0.5 },
-        guard: { label: "경비", default: 0.5 },
-        scout: { label: "정찰병", default: 0.55 },
+        guard_timid: { label: "소심한 경비", default: 0.5 },
+        merchant_greedy: { label: "탐욕한 상인", default: 0.52 },
+        scholar_alric: { label: "학자 알릭", default: 0.7 },
       },
       tiers: {
         hostile: { max: 0.24, label: "적대" },
