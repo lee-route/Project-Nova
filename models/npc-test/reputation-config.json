@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "village": {
     "label": "마을 평판",
     "min": 0,
@@ -7,10 +7,9 @@
     "default": 50
   },
   "npcKeys": {
-    "mayor": { "label": "촌장", "default": 0.5 },
-    "merchant": { "label": "상인", "default": 0.5 },
-    "guard": { "label": "경비", "default": 0.5 },
-    "scout": { "label": "정찰병", "default": 0.55 }
+    "guard_timid": { "label": "소심한 경비", "default": 0.5 },
+    "merchant_greedy": { "label": "탐욕한 상인", "default": 0.48 },
+    "scholar_alric": { "label": "학자 알릭", "default": 0.55 }
   },
   "tiers": {
     "hostile": { "max": 0.24, "label": "적대" },
@@ -20,7 +19,6 @@
     "trusted": { "max": 1, "label": "신뢰" }
   },
   "trustFromReputation": {
-    "_comment": "rep 0.5 = base. ±0.5 rep → ±trustScale spread on top of defaultTrustToPlayer",
     "trustScale": 0.35,
     "minTrust": 0.08,
     "maxTrust": 0.98

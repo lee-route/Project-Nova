@@ -1358,9 +1358,9 @@ function createBaseScenario(overrides = {}) {
   const info = new InfoAtom({
     info_id: "INF_001",
     truth_value: {
-      subject: "wolf",
-      action: "move",
-      target: "north gate",
+      subject: "밀수 화물",
+      action: "버려져 있다",
+      target: "안개 계곡",
       object: "",
       quantity: 3,
       is_factual: true,

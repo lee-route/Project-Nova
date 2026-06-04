@@ -1,5 +1,4 @@
 /**
- * Node runner for quest runtime (factMatch + turn-in).
  * Usage: node quest-test.mjs
  */
 import fs from "fs";
@@ -8,30 +7,29 @@ import { fileURLToPath } from "url";
 import vm from "vm";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const QUEST_ID = "quest_abandoned_cargo";
 
 function loadRuntime() {
   const sandbox = {
     window: {},
-    document: { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null },
+    document: { querySelector: () => null },
     console,
     localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
   };
   sandbox.window = sandbox;
   const ctx = vm.createContext(sandbox);
   const read = (f) => fs.readFileSync(path.join(__dirname, f), "utf8");
-  for (const f of ["dictionaries.js", "quest-system.js"]) {
+  for (const f of ["dictionaries.js", "quest-system.js", "reputation-system.js"]) {
     vm.runInContext(read(f), ctx, { filename: f });
   }
-  const npcs = JSON.parse(read("npcs.json"));
   const player = JSON.parse(read("player-profile.json"));
   sandbox.window.QuestSystem.registerProfiles({
-    npcs: npcs.npcs,
+    npcs: JSON.parse(read("npcs.json")).npcs,
     player: player.player,
   });
   vm.runInContext(read("app.js"), ctx, { filename: "app.js" });
   vm.runInContext(read("quest-runtime.js"), ctx, { filename: "quest-runtime.js" });
-  const catalog = JSON.parse(read("quests-draft.json"));
-  sandbox.window.QuestRuntime.setQuestCatalog(catalog);
+  sandbox.window.QuestRuntime.setQuestCatalog(JSON.parse(read("quests-draft.json")));
   return {
     parser: sandbox.window.NpcParser,
     engine: sandbox.window.QuestSystem,
@@ -45,74 +43,50 @@ function assert(cond, msg) {
 
 function main() {
   const { parser, engine, runtime } = loadRuntime();
-  let passed = 0;
 
   const match = runtime.evaluateFactMatch(
-    {
-      subject: "늑대 무리",
-      target: "북문 밖",
-      object: "",
-      quantity: 3,
-      certainty: 0.8,
-      action_type: "tactical_move",
-    },
-    {
-      subjectContains: "늑대",
-      actionType: "tactical_move",
-      targetContains: "북문",
-      minQuantity: 1,
-      minCertainty: 0.35,
-    }
+    { subject: "마약초", quantity: 12, certainty: 0.8, action_type: "unknown" },
+    runtime.getQuest(QUEST_ID).finalObjective.factMatch
   );
-  assert(match.ok, "factMatch should pass: " + match.reasons.join(", "));
-  passed += 1;
+  assert(match.ok, "factMatch: " + match.reasons.join(", "));
 
-  const report = "북문에서 늑대 3마리가 탈출했다";
-  const givers = ["mayor", "merchant", "guard"];
-  const outcomes = [];
-  for (const giverId of givers) {
-    const run = runtime.runQuestTurnIn({
-      questId: "quest_report_wolf_escape",
-      giverId,
-      scenarioText: report,
-      engine,
-      parser,
-    });
-    assert(run.completion.completed, giverId + " should complete: " + run.completion.reason);
-    assert(run.outcome && run.outcome.rewards.gold === 50, giverId + " gold mismatch");
-    outcomes.push(run.outcome);
-    passed += 1;
-  }
-
-  assert(
-    outcomes.every((o) => JSON.stringify(o.worldFlags) === JSON.stringify(outcomes[0].worldFlags)),
-    "worldFlags must match across givers"
-  );
-  passed += 1;
-
-  const mayorRun = runtime.runQuestTurnIn({
-    questId: "quest_report_wolf_escape",
-    giverId: "mayor",
-    scenarioText: report,
-    engine,
-    parser,
-  });
+  const reportHigh = "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다";
   const guardRun = runtime.runQuestTurnIn({
-    questId: "quest_report_wolf_escape",
-    giverId: "guard",
-    scenarioText: report,
+    questId: QUEST_ID,
+    giverId: "guard_timid",
+    scenarioText: reportHigh,
     engine,
     parser,
+    sessionKey: "qtest-guard",
+    reputationSessionKey: "qtest-guard",
   });
-  const mayorQ = mayorRun.engineResult.propagation.interpretedFacts[0].truth_value.quantity;
-  const guardQ = guardRun.engineResult.propagation.interpretedFacts[0].truth_value.quantity;
+  assert(guardRun.completion.completed, "guard path should complete");
   assert(
-    guardQ >= mayorQ || guardQ !== mayorQ,
-    "guard path quantity should differ or exaggerate vs mayor (distortion flavor)"
+    guardRun.outcomeBranch.branchId === "authority_path",
+    "guard dramatic expected authority, got " + guardRun.outcomeBranch.branchId
   );
-  passed += 1;
+  assert(guardRun.outcome.rewards.gold === 150, "authority gold");
 
-  console.log("quest-test: " + passed + " assertions passed");
+  const reportLow = "안개 계곡에 밀수 화물이 버려져 있다. 마약초 다섯 개가 들어 있다";
+  const scholarRun = runtime.runQuestTurnIn({
+    questId: QUEST_ID,
+    giverId: "scholar_alric",
+    scenarioText: reportLow,
+    engine,
+    parser,
+    sessionKey: "qtest-scholar",
+    reputationSessionKey: "qtest-scholar",
+  });
+  assert(scholarRun.completion.completed, "scholar path should complete");
+  assert(
+    scholarRun.outcomeBranch.branchId === "black_market_path",
+    "scholar faithful low qty expected black_market, got " + scholarRun.outcomeBranch.branchId
+  );
+  assert(scholarRun.outcome.rewards.gold === 300, "black_market gold");
+
+  console.log("quest-test: all passed");
+  console.log("  guard branch:", guardRun.outcomeBranch.branchId, "qty", guardRun.outcomeBranch.metrics.quantity);
+  console.log("  scholar branch:", scholarRun.outcomeBranch.branchId, "qty", scholarRun.outcomeBranch.metrics.quantity);
 }
 
 main();

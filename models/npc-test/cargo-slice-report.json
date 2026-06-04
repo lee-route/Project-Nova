@@ -1,0 +1,88 @@
+{
+  "generatedAt": "2026-06-04T03:25:14.841Z",
+  "questId": "quest_abandoned_cargo",
+  "title": "밀수업자의 버려진 화물",
+  "playerReportText": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+  "parserFacts": [
+    {
+      "fact_id": "F01",
+      "subject": "밀수 화물",
+      "action": "버려져 있다",
+      "object": "",
+      "target": "안개 계곡",
+      "quantity": 1,
+      "certainty": 0.75,
+      "is_countable": false,
+      "action_type": "state",
+      "parse_confidence": 0.88,
+      "parse_mode": "structured",
+      "raw_text": "안개 계곡에 밀수 화물이 버려져 있다.",
+      "source_text": "안개 계곡에 밀수 화물이 버려져 있다.",
+      "rumor": false
+    },
+    {
+      "fact_id": "F02",
+      "subject": "마약초",
+      "action": "들어 있다",
+      "object": "",
+      "target": "현장",
+      "quantity": 12,
+      "certainty": 0.75,
+      "is_countable": true,
+      "action_type": "unknown",
+      "parse_confidence": 0.55,
+      "parse_mode": "conservative_raw",
+      "raw_text": "마약초 열두 개가 들어 있다",
+      "source_text": "마약초 열두 개가 들어 있다",
+      "rumor": false
+    }
+  ],
+  "paths": [
+    {
+      "giverId": "guard_timid",
+      "completed": true,
+      "branchId": "authority_path",
+      "gold": 150,
+      "worldFlags": {
+        "is_cargo_secured": true,
+        "cargo_destination": "authority"
+      },
+      "quantity": 1,
+      "certainty": 0.67,
+      "applied_rules": [
+        "credulity_certainty_blend"
+      ]
+    },
+    {
+      "giverId": "merchant_greedy",
+      "completed": true,
+      "branchId": "authority_path",
+      "gold": 150,
+      "worldFlags": {
+        "is_cargo_secured": true,
+        "cargo_destination": "authority"
+      },
+      "quantity": 1,
+      "certainty": 0.67,
+      "applied_rules": [
+        "credulity_certainty_blend"
+      ]
+    },
+    {
+      "giverId": "scholar_alric",
+      "completed": true,
+      "branchId": "authority_path",
+      "gold": 150,
+      "worldFlags": {
+        "is_cargo_secured": true,
+        "cargo_destination": "authority"
+      },
+      "quantity": 1,
+      "certainty": 0.67,
+      "applied_rules": [
+        "credulity_certainty_blend"
+      ]
+    }
+  ],
+  "note": "branch authority_path: qty>=10 & certainty>=0.6 | black_market_path: qty<=9"
+}

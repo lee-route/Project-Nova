@@ -1,519 +1,261 @@
 {
-  "version": 2,
+  "version": 3,
+  "primaryQuestId": "quest_abandoned_cargo",
   "_meta": {
-    "purpose": "퀘스트 초안. 수시 수정용. 엔진 연동 전 데이터 정의만 포함.",
-    "designPattern": "동일 outcome + 의뢰인(questGiver)별 과정(processSteps)·정보 경험 차이",
-    "designPatternAlt": "선택: 최종 전달 대상(turnInTarget)을 의뢰인과 다르게 둘 수 있음",
+    "purpose": "정식 퀘스트: 밀수업자의 버려진 화물. npc-test·UE 연동 기준.",
+    "designPattern": "interpretedFacts 수량·확신 → outcomes[] 분기 (authority vs black_market)",
     "lastUpdated": "2026-05-27",
     "npcDataFile": "npcs.json",
     "playerDataFile": "player-profile.json",
     "reputationConfigFile": "reputation-config.json",
-    "reputationNotes": [
-      "NPC 주제별 reputation(늑대·촌장 등) = quest-system NPC.reputation → 왜곡 엔진",
-      "플레이어↔NPC 평판 = reputation-system → defaultTrustToPlayer 보정",
-      "퀘스트 완료 시 experience.softEffects.playerRepDelta 적용"
-    ],
     "editorNotes": [
-      "outcome 은 모든 의뢰인·경로에서 동일 (보상·스토리 플래그)",
-      "questGivers[].processSteps 로 '과정' 차별화 (장소·대사·중간 목표)",
-      "questGivers[].experience 로 왜곡·KB·연출 차별화",
-      "플레이어 선택 저장 필드(연동 시): QuestInstance.chosenQuestGiverId",
-      "objective.factMatch 는 파서/왜곡 결과(interpretedFacts)와 대조",
-      "turnInTargets 가 없으면 최종 전달 = 해당 의뢰인(npcProfileRef)"
-    ],
-    "glossary": {
-      "questGiver": "퀘스트를 누구에게서 받아 수행하는지 → 과정 분기",
-      "turnInTarget": "최종 사실을 누구에게 전달하는지 → 전파·왜곡 분기 (생략 시 의뢰인에게 전달)",
-      "outcome": "모든 경로 공통 결과 (gold/xp/worldFlags)"
-    }
-  },
-
-  "npcProfiles": {
-    "_comment": "레거시 참조용 — 런타임은 npcs.json 사용. 아래 키는 npcProfileRef 와 동일",
-
-    "scout": {
-      "id": "NPC_SCOUT",
-      "displayName": "정찰병",
-      "persona": "hotblood_hunter",
-      "roleHint": "퀘스트 소개·공통 발신 NPC",
-      "stats": { "fear": 0.5, "hostility": 0.4, "trust": 0.6, "credulity": 0.7 },
-      "reputation": { "늑대": 0.5, "촌장": 0.7, "상인": 0.5 },
-      "defaultTrustToPlayer": 0.7
-    },
-
-    "mayor": {
-      "id": "NPC_MAYOR",
-      "displayName": "촌장",
-      "persona": "calm_scholar",
-      "roleHint": "신중·공식 경로. 왜곡 적음, 마을 안정 톤",
-      "stats": { "fear": 0.35, "hostility": 0.2, "trust": 0.7, "credulity": 0.55 },
-      "reputation": { "촌장": 0.9, "늑대": 0.4, "상인": 0.65 },
-      "defaultTrustToPlayer": 0.72
-    },
-
-    "merchant": {
-      "id": "NPC_MERCHANT",
-      "displayName": "상인",
-      "persona": "cynical_merchant",
-      "roleHint": "소문·과장 경향. 시장 쪽 루머 확산",
-      "stats": { "fear": 0.45, "hostility": 0.35, "trust": 0.6, "credulity": 0.88 },
-      "reputation": { "상인": 0.85, "늑대": 0.25, "촌장": 0.55 },
-      "defaultTrustToPlayer": 0.58
-    },
-
-    "guard": {
-      "id": "NPC_GUARD",
-      "displayName": "경비",
-      "persona": "fearful_guard",
-      "roleHint": "공포·수량 과장. 북문 경계 강화 톤",
-      "stats": { "fear": 0.82, "hostility": 0.55, "trust": 0.55, "credulity": 0.75 },
-      "reputation": { "늑대": 0.2, "촌장": 0.75, "상인": 0.45 },
-      "defaultTrustToPlayer": 0.65
-    }
+      "NPC 주제별 reputation = 왜곡 엔진 (quest-system NPC.reputation)",
+      "플레이어↔NPC 평판 = reputation-system",
+      "playerRepDelta.current_giver → 보고 대상 npcProfileRef",
+      "playerRepDelta.village → villageRepDelta",
+      "sharedAcceptDialogueByTier = 퀘스트 공통 의뢰 대사 (평판 tier)"
+    ]
   },
 
   "quests": [
     {
-      "id": "quest_report_wolf_escape",
-      "status": "draft",
-      "title": "북문의 소동",
-      "summary": "같은 사건을 해결하지만, 누구의 의뢰로 수행하느냐에 따라 과정·퍼지는 정보는 달라진다. 보상과 스토리 결과는 동일하다.",
+      "id": "quest_abandoned_cargo",
+      "status": "active",
+      "title": "밀수업자의 버려진 화물",
+      "summary": "안개 계곡의 버려진 밀수 화물을 조사해 학자 알릭에게 보고한다. NPC가 믿는 수량·확신에 따라 마을 처분(공식 vs 암시장)이 갈린다.",
 
-      "introNpcRef": "scout",
-      "introDialogue": "북문에서 늑대가 빠져나왔어. 촌장·상인·경비 중 누구 편에서 이 일을 맡을지 정해.",
+      "minTierToAccept": "neutral",
+      "sharedAcceptDialogueByTier": {
+        "hostile": "너 같은 사기꾼의 말은 듣지 않는다. 물러가라.",
+        "wary": "화물이 있다고? 흐음... 딱히 믿음이 안 가는군. 증거가 더 확실해야겠어.",
+        "neutral": "계곡 쪽에 밀수꾼들이 버리고 간 화물이 있다는 소문이 돌더군. 조사해서 보고해주겠나?",
+        "friendly": "자네라면 믿을 수 있지. 계곡의 위험한 화물 상태를 정확히 파악해서 나에게만 먼저 알려주게.",
+        "trusted": "아, 자네 왔는가! 지금 마을 안전을 위협하는 화물 정보가 급히 필요하네. 자네의 판단을 믿겠네.",
+        "refused": "지금은 네 말을 믿을 수 없군. 마을 신뢰부터 쌓고 오게."
+      },
 
-      "playerInputHintFinal": "최종 단계 입력 예: 북문에서 늑대 3마리가 탈출했다",
+      "introNpcRef": "scholar_alric",
+      "introDialogue": "안개 계곡에 버려진 화물 소문이야. 경비·상인·내 관점 중 누구 일로 맡을지 정해.",
+      "playerInputHintFinal": "예: 안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
       "expectedParseExample": {
-        "subjectContains": "늑대",
-        "actionType": "tactical_move",
-        "targetContains": "북문",
-        "quantity": 3
+        "subjectContains": "화물",
+        "targetContains": "계곡",
+        "objectContains": "마약",
+        "quantity": 12
       },
 
-      "sharedObjectives": [
-        {
-          "id": "obj_resolve_incident",
-          "type": "quest_complete",
-          "description": "북문 소동 처리 완료 (모든 의뢰인 경로 공통)",
-          "required": true
-        }
-      ],
-
       "finalObjective": {
-        "id": "obj_deliver_report",
+        "id": "obj_report_cargo",
         "type": "turn_in_fact",
-        "description": "조사·절차를 마친 뒤 최종 보고 문장 입력",
+        "description": "현장 조사 후 학자 알릭에게 보고",
         "factMatch": {
-          "subjectContains": "늑대",
-          "actionType": "tactical_move",
-          "targetContains": "북문",
+          "_comment": "복합문 시 마약초 fact(F02) 또는 화물+계곡(F01) 중 하나 매칭",
+          "subjectContains": "마약",
           "minQuantity": 1,
-          "minCertainty": 0.35
+          "minCertainty": 0.3
+        },
+        "factMatchAlt": {
+          "subjectContains": "화물",
+          "targetContains": "계곡",
+          "minCertainty": 0.3
         }
       },
 
-      "outcome": {
-        "_comment": "모든 questGiver 경로에서 동일",
-        "worldFlags": ["wolf_incident_resolved"],
-        "questState": "completed",
-        "rewards": {
-          "gold": 50,
-          "xp": 100,
-          "story": { "itemId": null, "note": "메인 진행용 — 필요 시 itemId 추가" }
-        },
-        "narration": "북문 소동은 공식적으로 종료되었다."
-      },
-
-      "questGivers": [
+      "outcomes": [
         {
-          "giverId": "mayor",
-          "label": "촌장의 의뢰로 처리한다",
-          "npcProfileRef": "mayor",
-          "acceptDialogue": "공식적으로 처리하자. 회관부터 시작하게.",
-          "minTierToAccept": "wary",
-          "refusedDialogue": "지금은 네 이름을 올리기 어렵네. 마을 신뢰부터 쌓고 오게.",
-          "acceptDialogueByTier": {
-            "default": "공식적으로 처리하자. 회관부터 시작하게.",
-            "wary": "또 일인가… 알겠네. 이번에도 공식 절차대로 하지.",
-            "neutral": "공식적으로 처리하자. 회관부터 시작하게.",
-            "friendly": "자네라면 믿을 만하지. 회관에서 브리핑하겠네.",
-            "trusted": "마을을 부탁하네. 필요한 권한은 내가 열어 두겠네.",
-            "refused": "지금은 네 이름을 올리기 어렵네. 마을 신뢰부터 쌓고 오게."
+          "id": "authority_path",
+          "label": "공식 확보 (과장된 위험 보고)",
+          "condition": {
+            "interpreted_quantity_min": 10,
+            "interpreted_certainty_min": 0.6
           },
-          "uiHint": "절차가 길지만 소식이 덜 과장된다.",
-
-          "processSteps": [
-            {
-              "stepId": "mayor_s1_briefing",
-              "order": 1,
-              "type": "dialogue",
-              "location": "마을 회관",
-              "title": "공식 브리핑",
-              "npcLine": "먼저 사실 관계만 정리하자. 목격자가 있으면 데려오게.",
-              "playerAction": "대화 진행 (버튼)",
-              "optional": false
+          "effects": {
+            "questState": "completed",
+            "rewards": { "gold": 150, "xp": 120 },
+            "worldFlags": {
+              "is_cargo_secured": true,
+              "cargo_destination": "authority"
             },
-            {
-              "stepId": "mayor_s2_witness",
-              "order": 2,
-              "type": "interact",
-              "location": "마을 회관 앞",
-              "title": "목격자 확인",
-              "npcLine": "북문 근처 주민에게 들은 말을 요약해 보게.",
-              "playerAction": "주민 NPC와 대화",
-              "optional": false
-            },
-            {
-              "stepId": "mayor_s3_report",
-              "order": 3,
-              "type": "fact_input",
-              "location": "마을 회관",
-              "title": "촌장에게 공식 보고",
-              "npcLine": "이제 내게 정확히 보고하게. 숫자는 가능한 한 맞추게.",
-              "playerAction": "playerInputHintFinal 참고 — 문장 입력 후 propagate",
-              "optional": false,
-              "triggersEngine": true
-            }
-          ],
-
-          "turnInTarget": {
-            "targetId": "mayor",
-            "npcProfileRef": "mayor",
-            "_note": "생략 가능. 없으면 의뢰인에게 최종 전달"
-          },
-
-          "experience": {
-            "propagationOptions": {
-              "quantityMode": "faithful",
-              "allowPartialTrust": true
-            },
-            "expectedDistortionFlavor": ["reputation_dampen_fear", "faithful_qty_preserve"],
-            "rumorSpread": "low",
-            "kbSummaryTemplate": "촌장 공식 기록: 북문 탈출 {quantity}마리, 과장 없이 대응.",
-            "completionDialogue": "수고했네. 마을 회의에 반영하겠다.",
-            "softEffects": {
-              "playerRepDelta": { "mayor": 0.12, "merchant": 0, "guard": 0.03 },
-              "unlockDialogueIds": ["mayor_calm_aftermath"]
-            },
-            "postCompletionLines": [
-              "마을 회의가 조용히 열렸다.",
-              "주민들은 크게 동요하지 않는다."
-            ]
+            "narration": "화물이 관청 쪽으로 인도되었다.",
+            "playerRepDelta": { "village": 5, "current_giver": 0.1, "scholar_alric": 0.08 }
           }
         },
-
         {
-          "giverId": "merchant",
-          "label": "상인의 의뢰로 처리한다",
-          "npcProfileRef": "merchant",
-          "acceptDialogue": "시장이 시끄러워지기 전에 움직이자. 손님들 귀는 예민하거든.",
-          "acceptDialogueByTier": {
-            "default": "시장이 시끄러워지기 전에 움직이자. 손님들 귀는 예민하거든.",
-            "wary": "또 손해 보는 일이야? …빨리 끝내, 시장이 떠들면 안 되니까.",
-            "neutral": "시장이 시끄러워지기 전에 움직이자. 손님들 귀는 예민하거든.",
-            "friendly": "네가 오면 말이 통하지. 시장 쪽은 내가 막아 볼게.",
-            "trusted": "좋아, 네 말이면 상인들도 안심하지. 바로 움직이자."
+          "id": "black_market_path",
+          "label": "암시장 유입 (소량·애매한 보고)",
+          "condition": {
+            "interpreted_quantity_max": 9,
+            "interpreted_certainty_min": 0.4
           },
-          "uiHint": "과정이 빠르지만 소문이 시장에 퍼질 수 있다.",
-
-          "processSteps": [
-            {
-              "stepId": "merchant_s1_market",
-              "order": 1,
-              "type": "dialogue",
-              "location": "시장",
-              "title": "시장 상황 파악",
-              "npcLine": "먼저 시장부터 돌아보자. 뭐가 새고 있는지 감이 와.",
-              "playerAction": "시장 NPC 관찰",
-              "optional": false
+          "effects": {
+            "questState": "completed",
+            "rewards": { "gold": 300, "xp": 80 },
+            "worldFlags": {
+              "is_cargo_secured": true,
+              "cargo_destination": "black_market"
             },
-            {
-              "stepId": "merchant_s2_rumor_check",
-              "order": 2,
-              "type": "interact",
-              "location": "주막",
-              "title": "소문 단서 수집",
-              "npcLine": "주막에서 이미 풍문이 도는지 들어봐. 과장됐는지도.",
-              "playerAction": "주막 주인과 대화",
-              "optional": true
-            },
-            {
-              "stepId": "merchant_s3_report",
-              "order": 3,
-              "type": "fact_input",
-              "location": "시장",
-              "title": "상인에게 보고",
-              "npcLine": "좋아, 이제 내게 말해. 시장에 퍼지기 전에 정리하자.",
-              "playerAction": "문장 입력 후 propagate",
-              "optional": false,
-              "triggersEngine": true
-            }
-          ],
-
-          "turnInTarget": {
-            "targetId": "merchant",
-            "npcProfileRef": "merchant"
-          },
-
-          "experience": {
-            "propagationOptions": {
-              "quantityMode": "dramatic",
-              "allowPartialTrust": true
-            },
-            "expectedDistortionFlavor": ["rumor_source_unclear", "fear_qty_amp"],
-            "rumorSpread": "high",
-            "kbSummaryTemplate": "상인 쪽 기록: {quantity}마리 이상, 무리 더 있을 수도.",
-            "completionDialogue": "알겠어. 금방 시장 전체가 이 얘기로 떠들겠지.",
-            "softEffects": {
-              "playerRepDelta": { "mayor": -0.04, "merchant": 0.14, "guard": 0 },
-              "unlockDialogueIds": ["market_rumor_aftermath"]
-            },
-            "postCompletionLines": [
-              "시장에서 늑대 이야기가 오간다.",
-              "몇몇 상인이 문을 닫았다."
-            ]
-          }
-        },
-
-        {
-          "giverId": "guard",
-          "label": "경비의 의뢰로 처리한다",
-          "npcProfileRef": "guard",
-          "acceptDialogue": "말보다 현장이 먼저다. 북문으로 와.",
-          "acceptDialogueByTier": {
-            "default": "말보다 현장이 먼저다. 북문으로 와.",
-            "wary": "민간인은 북문에 가까이 오지 마… …알겠어, 짧게만 처리해.",
-            "neutral": "말보다 현장이 먼저다. 북문으로 와.",
-            "friendly": "네가 와 주면 다행이야. 북문 쪽은 바로 안내하지.",
-            "trusted": "믿고 맡긴다. 현장 보고는 네 눈이 가장 정확하더군."
-          },
-          "uiHint": "현장 중심. 경계 강화되지만 수량이 과장될 수 있다.",
-
-          "processSteps": [
-            {
-              "stepId": "guard_s1_north_gate",
-              "order": 1,
-              "type": "travel",
-              "location": "북문",
-              "title": "북문 현장 도착",
-              "npcLine": "발자국, 털, 냄새. 눈으로 직접 확인해.",
-              "playerAction": "북문 트리거 존 진입",
-              "optional": false
-            },
-            {
-              "stepId": "guard_s2_patrol",
-              "order": 2,
-              "type": "interact",
-              "location": "북문 외곽",
-              "title": "순찰병과 합류",
-              "npcLine": "순찰병에게 들은 시각·마리 수를 맞춰봐.",
-              "playerAction": "순찰병 대화",
-              "optional": false
-            },
-            {
-              "stepId": "guard_s3_report",
-              "order": 3,
-              "type": "fact_input",
-              "location": "북문 초소",
-              "title": "경비대장에게 보고",
-              "npcLine": "이제 보고해. 빠뜨리면 안 되는 것도, 지어내면 안 되는 것도 있지.",
-              "playerAction": "문장 입력 후 propagate",
-              "optional": false,
-              "triggersEngine": true
-            }
-          ],
-
-          "turnInTarget": {
-            "targetId": "guard",
-            "npcProfileRef": "guard"
-          },
-
-          "experience": {
-            "propagationOptions": {
-              "quantityMode": "dramatic",
-              "allowPartialTrust": true
-            },
-            "expectedDistortionFlavor": ["fear_qty_amp", "fear_target_distort"],
-            "rumorSpread": "medium",
-            "kbSummaryTemplate": "경비 기록: 북문 일대 위험, 늑대 {quantity}마리 이상 추정.",
-            "completionDialogue": "알겠다. 경계 인원을 늘리겠다.",
-            "softEffects": {
-              "playerRepDelta": { "guard": 0.15, "mayor": 0.04, "merchant": 0 },
-              "unlockDialogueIds": ["north_gate_alert_aftermath"]
-            },
-            "postCompletionLines": [
-              "북문 경비가 두 배로 늘었다.",
-              "나무에 경계 표시가 걸렸다."
-            ]
+            "narration": "화물 규모가 작다는 보고가 퍼지며 암시장 쪽으로 새었다.",
+            "playerRepDelta": { "village": 2, "current_giver": 0.05, "merchant_greedy": 0.12 }
           }
         }
       ],
 
-      "_legacy_turnInOnly": {
-        "_comment": "v1 설계(보고 대상만 분기). 참고용 — 구현 시 questGivers 우선",
-        "turnInTargets": ["mayor", "merchant", "guard"]
-      }
-    },
-
-    {
-      "id": "quest_report_rebel_chase",
-      "status": "draft",
-      "title": "대초원의 추격",
-      "summary": "카엘의 추격 정보를 누구 의뢰로 처리하느냐에 따라 과정이 다르다. 결과 보상은 동일.",
-      "_engineNote": "object 슬롯이 왜곡/KB까지 전달된 뒤 factMatch.objectContains 활성화",
-
-      "introNpcRef": "scout",
-      "introDialogue": "대초원 쪽 소식이야. 촌장·경비 중 누구 일로 맡을지 정해.",
-
-      "playerInputHintFinal": "예: 카엘이 대초원에서 패퇴하는 마을의 반군 무리 대여섯명을 쫓고있다",
-
-      "finalObjective": {
-        "id": "obj_chase_report",
-        "type": "turn_in_fact",
-        "description": "추격 상황 최종 보고",
-        "factMatch": {
-          "subjectContains": "카엘",
-          "actionType": "tactical_move",
-          "targetContains": "대초원",
-          "objectContains": "반군",
-          "minQuantity": 4
-        }
-      },
-
-      "outcome": {
-        "worldFlags": ["rebel_chase_logged"],
+      "outcomeFallback": {
         "questState": "completed",
-        "rewards": { "gold": 40, "xp": 80 },
-        "narration": "추격 상황이 공식 기록에 남았다."
+        "rewards": { "gold": 80, "xp": 50 },
+        "worldFlags": { "is_cargo_secured": true, "cargo_destination": "unknown" },
+        "narration": "보고는 접수되었으나 규모 판단이 불명확하다."
       },
 
       "questGivers": [
         {
-          "giverId": "mayor",
-          "label": "촌장의 의뢰",
-          "npcProfileRef": "mayor",
-          "acceptDialogue": "민간인 추격은 민감하다. 서류부터 맞추자.",
+          "giverId": "guard_timid",
+          "label": "소심한 경비의 의뢰",
+          "npcProfileRef": "guard_timid",
+          "acceptDialogue": "계곡 화물? 위험할지도 몰라… 네가 대신 확인해줘.",
+          "uiHint": "공포·수량 과장. 알릭에게 보고 시 authority 분기 유리",
+
+          "turnInTarget": { "npcProfileRef": "scholar_alric" },
+
           "processSteps": [
             {
-              "stepId": "chase_mayor_s1",
+              "stepId": "gt_s1",
               "order": 1,
               "type": "dialogue",
-              "location": "마을 회관",
-              "title": "공문 초안",
-              "npcLine": "카엘 이름과 대략적 인원만 적어두게.",
+              "location": "마을 정문",
+              "title": "겁먹은 경비 브리핑",
+              "npcLine": "밀수꾼들이 도망치다 화물을 버렸대. 마약초가 잔뜩일 거야!",
               "playerAction": "대화"
             },
             {
-              "stepId": "chase_mayor_s2",
+              "stepId": "gt_s2",
               "order": 2,
-              "type": "fact_input",
-              "location": "마을 회관",
-              "title": "촌장에게 보고",
-              "npcLine": "이제 들은 대로 보고하게.",
-              "playerAction": "문장 입력",
-              "triggersEngine": true
-            }
-          ],
-          "experience": {
-            "propagationOptions": { "quantityMode": "faithful" },
-            "completionDialogue": "기록했다. 무리한 추격은 삼가도록 하겠네.",
-            "kbSummaryTemplate": "촌장 기록: 카엘, 대초원에서 반군 일부 추격."
-          }
-        },
-        {
-          "giverId": "guard",
-          "label": "경비의 의뢰",
-          "npcProfileRef": "guard",
-          "acceptDialogue": "전장은 말이 아니라 눈으로 본다. 대초원으로.",
-          "processSteps": [
-            {
-              "stepId": "chase_guard_s1",
-              "order": 1,
               "type": "travel",
-              "location": "대초원 입구",
-              "title": "전선 접근",
-              "npcLine": "먼지·발자국. 규모를 짐작해봐.",
+              "location": "안개 계곡",
+              "title": "현장 조사",
               "playerAction": "존 진입"
             },
             {
-              "stepId": "chase_guard_s2",
-              "order": 2,
+              "stepId": "gt_s3",
+              "order": 3,
               "type": "fact_input",
-              "location": "대초원 초소",
-              "title": "경비에게 보고",
-              "npcLine": "숫자는 넉넉히 잡아도 된다. 놓치는 것보다 낫지.",
-              "playerAction": "문장 입력",
-              "triggersEngine": true
+              "location": "안개 계곡",
+              "title": "알릭에게 보고",
+              "triggersEngine": true,
+              "playerAction": "playerInputHintFinal 참고"
             }
           ],
+
           "experience": {
-            "propagationOptions": { "quantityMode": "dramatic" },
-            "completionDialogue": "알겠다. 증원 검토하겠다.",
-            "kbSummaryTemplate": "경비 기록: 대규모 반군 무리 추격 중."
+            "propagationOptions": { "quantityMode": "dramatic", "allowPartialTrust": true },
+            "expectedDistortionFlavor": ["fear_qty_amp", "credulity_qty_amp"],
+            "completionDialogue": "그렇게 많았다고? 당장 기록하겠네."
+          }
+        },
+        {
+          "giverId": "merchant_greedy",
+          "label": "탐욕한 상인의 의뢰",
+          "npcProfileRef": "merchant_greedy",
+          "acceptDialogue": "계곡 화물? 값나가는 건 내가 챙기지. 알릭에게만 먼저 말해.",
+          "uiHint": "dramatic·소문. 수량 과장 → authority 또는 암시장",
+
+          "turnInTarget": { "npcProfileRef": "scholar_alric" },
+
+          "processSteps": [
+            {
+              "stepId": "mg_s1",
+              "order": 1,
+              "type": "dialogue",
+              "location": "시장",
+              "title": "상인 브리핑",
+              "npcLine": "밀수꾼이 금빛 상자를 버렸다더군. 많이 남았을 거야.",
+              "playerAction": "대화"
+            },
+            {
+              "stepId": "mg_s2",
+              "order": 2,
+              "type": "travel",
+              "location": "안개 계곡",
+              "title": "현장 확인",
+              "playerAction": "존 진입"
+            },
+            {
+              "stepId": "mg_s3",
+              "order": 3,
+              "type": "fact_input",
+              "location": "학자 서재",
+              "title": "알릭에게 보고",
+              "triggersEngine": true,
+              "playerAction": "문장 입력"
+            }
+          ],
+
+          "experience": {
+            "propagationOptions": { "quantityMode": "dramatic", "allowPartialTrust": true },
+            "expectedDistortionFlavor": ["rumor_source_unclear", "credulity_qty_amp"],
+            "completionDialogue": "흥미롭군. 기록해 두지."
+          }
+        },
+        {
+          "giverId": "scholar_alric",
+          "label": "학자 알릭의 공식 의뢰",
+          "npcProfileRef": "scholar_alric",
+          "acceptDialogue": "계곡 화물을 사실 위주로 조사해 오게. 숫자는 정확히.",
+          "uiHint": "faithful. 소량 정확 보고 → black_market 분기 가능",
+
+          "turnInTarget": { "npcProfileRef": "scholar_alric" },
+
+          "processSteps": [
+            {
+              "stepId": "sa_s1",
+              "order": 1,
+              "type": "dialogue",
+              "location": "학자 서재",
+              "title": "공식 의뢰",
+              "npcLine": "버려진 밀수 화물과 마약초 규모를 확인하게.",
+              "playerAction": "대화"
+            },
+            {
+              "stepId": "sa_s2",
+              "order": 2,
+              "type": "travel",
+              "location": "안개 계곡",
+              "title": "현장 조사",
+              "playerAction": "존 진입"
+            },
+            {
+              "stepId": "sa_s3",
+              "order": 3,
+              "type": "fact_input",
+              "location": "학자 서재",
+              "title": "알릭에게 보고",
+              "triggersEngine": true,
+              "playerAction": "문장 입력"
+            }
+          ],
+
+          "experience": {
+            "propagationOptions": { "quantityMode": "faithful", "allowPartialTrust": true },
+            "expectedDistortionFlavor": ["faithful_qty_preserve"],
+            "completionDialogue": "정리해 두겠네. 수고했네."
           }
         }
       ]
     }
   ],
 
+  "_archivedQuests": {
+    "_comment": "이전 프로토타입(늑대·반군). 회귀 테스트 일부는 여전히 늑대 문장 사용",
+    "quest_report_wolf_escape": { "status": "archived", "title": "북문의 소동" },
+    "quest_report_rebel_chase": { "status": "archived", "title": "대초원의 추격" }
+  },
+
   "questInstanceTemplate": {
-    "_comment": "런타임 상태 (연동 시). JSON 초안에는 참고용",
-    "questId": "quest_report_wolf_escape",
+    "questId": "quest_abandoned_cargo",
     "state": "offered",
     "chosenQuestGiverId": null,
     "currentStepId": null,
     "completedStepIds": [],
-    "turnInNpcId": null
-  },
-
-  "questTemplate": {
-    "_comment": "새 퀘스트: 이 블록 복사 → quests[] 에 추가",
-    "id": "quest_NEW_ID",
-    "status": "draft",
-    "title": "제목",
-    "summary": "동일 outcome + questGiver별 processSteps",
-    "introNpcRef": "scout",
-    "introDialogue": "",
-    "playerInputHintFinal": "",
-    "finalObjective": {
-      "id": "obj_final",
-      "type": "turn_in_fact",
-      "factMatch": {}
-    },
-    "outcome": {
-      "worldFlags": [],
-      "questState": "completed",
-      "rewards": { "gold": 0, "xp": 0 }
-    },
-    "questGivers": [
-      {
-        "giverId": "giver_a",
-        "label": "A의 의뢰",
-        "npcProfileRef": "mayor",
-        "acceptDialogue": "",
-        "processSteps": [
-          {
-            "stepId": "a_s1",
-            "order": 1,
-            "type": "dialogue",
-            "location": "",
-            "title": "",
-            "npcLine": "",
-            "playerAction": ""
-          },
-          {
-            "stepId": "a_s_final",
-            "order": 2,
-            "type": "fact_input",
-            "triggersEngine": true,
-            "playerAction": "문장 입력"
-          }
-        ],
-        "experience": {
-          "propagationOptions": { "quantityMode": "faithful" },
-          "completionDialogue": ""
-        }
-      }
-    ]
+    "turnInNpcId": "scholar_alric"
   }
 }

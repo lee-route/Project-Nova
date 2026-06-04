@@ -86,7 +86,8 @@
       questSelect.appendChild(el);
     });
     if (questReportText && !questReportText.value) {
-      questReportText.value = "북문에서 늑대 3마리가 탈출했다";
+      questReportText.value =
+        "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다";
     }
     refreshGiverOptions();
   }
@@ -134,6 +135,7 @@
         }),
         experienceFlavor: run.experience.expectedDistortionFlavor,
         reputationResult: run.reputationResult,
+        outcomeBranch: run.outcomeBranch,
         playerReputation: run.engineResult.playerReputationSnapshot,
       });
       }

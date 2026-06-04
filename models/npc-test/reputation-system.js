@@ -182,6 +182,13 @@
    *   villageRepDelta: number (optional)
    *   reputation: number (alias for village, from quest_result)
    */
+  function normalizeRepDelta(value) {
+    var n = Number(value);
+    if (!isFinite(n)) return 0;
+    if (Math.abs(n) > 1) return n / 100;
+    return n;
+  }
+
   function applyQuestEffects(sessionKey, effects, meta) {
     var state = getState(sessionKey);
     var changes = [];
@@ -190,12 +197,26 @@
     var npcDelta = effects?.playerRepDelta || effects?.npcRepDelta;
     if (npcDelta && typeof npcDelta === "object") {
       Object.keys(npcDelta).forEach(function (key) {
-        var ch = applyNpcDelta(state, key, npcDelta[key], reason + ":" + (meta?.giverId || ""));
+        if (key === "village") return;
+        var profileKey = key;
+        if (key === "current_giver") {
+          profileKey = meta?.npcProfileRef || meta?.giverId;
+          if (!profileKey) return;
+        }
+        var ch = applyNpcDelta(
+          state,
+          profileKey,
+          normalizeRepDelta(npcDelta[key]),
+          reason + ":" + (meta?.giverId || "")
+        );
         if (ch) changes.push(ch);
       });
     }
 
     var vDelta = effects?.villageRepDelta;
+    if (vDelta === undefined && typeof npcDelta?.village === "number") {
+      vDelta = npcDelta.village;
+    }
     if (vDelta === undefined && typeof effects?.reputation === "number") {
       vDelta = effects.reputation;
     }

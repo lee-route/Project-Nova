@@ -11,10 +11,9 @@
     "defaultQuantityMode": "faithful",
     "initialVillageReputation": 50,
     "initialNpcReputation": {
-      "mayor": 0.52,
-      "merchant": 0.48,
-      "guard": 0.5,
-      "scout": 0.55
+      "guard_timid": 0.5,
+      "merchant_greedy": 0.48,
+      "scholar_alric": 0.55
     }
   }
 }

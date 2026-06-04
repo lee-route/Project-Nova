@@ -113,22 +113,84 @@
   }
 
   function evaluateQuestCompletion(interpretedFacts, quest) {
-    var spec = quest.finalObjective && quest.finalObjective.factMatch;
-    if (!spec) {
+    var objective = quest.finalObjective || {};
+    var specs = [];
+    if (objective.factMatch) specs.push(objective.factMatch);
+    if (objective.factMatchAlt) specs.push(objective.factMatchAlt);
+    if (!specs.length) {
       return { completed: false, matches: [], reason: "no factMatch on quest" };
     }
     var matches = [];
     var anyOk = false;
     for (var i = 0; i < interpretedFacts.length; i += 1) {
       var snap = factSnapshotFromInterpreted(interpretedFacts[i]);
-      var ev = evaluateFactMatch(snap, spec);
-      matches.push({ factIndex: i, snapshot: snap, evaluation: ev });
-      if (ev.ok) anyOk = true;
+      for (var s = 0; s < specs.length; s += 1) {
+        var ev = evaluateFactMatch(snap, specs[s]);
+        matches.push({ factIndex: i, specIndex: s, snapshot: snap, evaluation: ev });
+        if (ev.ok) anyOk = true;
+      }
     }
     return {
       completed: anyOk,
       matches: matches,
       reason: anyOk ? "" : matches.length ? matches[0].evaluation.reasons.join("; ") : "no facts",
+    };
+  }
+
+  function aggregateInterpretedMetrics(interpretedFacts) {
+    var quantity = 0;
+    var certainty = 0;
+    for (var i = 0; i < interpretedFacts.length; i += 1) {
+      var snap = factSnapshotFromInterpreted(interpretedFacts[i]);
+      quantity = Math.max(quantity, snap.quantity);
+      certainty = Math.max(certainty, snap.certainty);
+    }
+    return { quantity: quantity, certainty: certainty };
+  }
+
+  function matchesOutcomeCondition(metrics, condition) {
+    if (!condition) return false;
+    var c = condition;
+    if (typeof c.interpreted_quantity_min === "number" && metrics.quantity < c.interpreted_quantity_min) {
+      return false;
+    }
+    if (typeof c.interpreted_quantity_max === "number" && metrics.quantity > c.interpreted_quantity_max) {
+      return false;
+    }
+    if (typeof c.interpreted_certainty_min === "number" && metrics.certainty < c.interpreted_certainty_min) {
+      return false;
+    }
+    if (typeof c.interpreted_certainty_max === "number" && metrics.certainty > c.interpreted_certainty_max) {
+      return false;
+    }
+    return true;
+  }
+
+  function pickOutcomeBranch(interpretedFacts, quest) {
+    var branches = quest.outcomes;
+    if (!branches || !branches.length) {
+      return quest.outcome
+        ? { branchId: "legacy_outcome", effects: quest.outcome, metrics: aggregateInterpretedMetrics(interpretedFacts) }
+        : null;
+    }
+    var metrics = aggregateInterpretedMetrics(interpretedFacts);
+    for (var i = 0; i < branches.length; i += 1) {
+      var b = branches[i];
+      if (matchesOutcomeCondition(metrics, b.condition)) {
+        return {
+          branchId: b.id || "outcome_" + i,
+          effects: b.effects || {},
+          metrics: metrics,
+          condition: b.condition,
+        };
+      }
+    }
+    var fallback = quest.outcomeFallback;
+    return {
+      branchId: "fallback",
+      effects: fallback || { questState: "completed", rewards: { gold: 0 } },
+      metrics: metrics,
+      condition: null,
     };
   }
 
@@ -177,19 +239,16 @@
 
     var interpreted = result.propagation.interpretedFacts || [];
     var completion = evaluateQuestCompletion(interpreted, quest);
+    var outcomeBranch = completion.completed ? pickOutcomeBranch(interpreted, quest) : null;
 
     var reputationResult = null;
-    if (completion.completed && global.ReputationSystem) {
+    if (completion.completed && global.ReputationSystem && outcomeBranch) {
       var sessionKey = options.reputationSessionKey || options.sessionKey || "default";
-      var soft = exp.softEffects || {};
-      var effects = {
-        playerRepDelta: soft.playerRepDelta,
-        villageRepDelta: soft.villageRepDelta,
-        reputation: quest.outcome && quest.outcome.reputation,
-      };
-      reputationResult = global.ReputationSystem.applyQuestEffects(sessionKey, effects, {
+      var branchEffects = outcomeBranch.effects || {};
+      reputationResult = global.ReputationSystem.applyQuestEffects(sessionKey, branchEffects, {
         questId: quest.id,
         giverId: giver.giverId,
+        npcProfileRef: giver.npcProfileRef,
       });
     }
 
@@ -199,7 +258,8 @@
       turnInProfileKey: recvKey,
       engineResult: result,
       completion: completion,
-      outcome: completion.completed ? quest.outcome : null,
+      outcome: outcomeBranch ? outcomeBranch.effects : null,
+      outcomeBranch: outcomeBranch,
       experience: exp,
       processSteps: giver.processSteps || [],
       reputationResult: reputationResult,
@@ -224,7 +284,7 @@
    * Pick quest accept line from player rep tier toward this giver.
    * giver.acceptDialogueByTier[tierId] → default → acceptDialogue
    */
-  function resolveAcceptDialogue(giver, options) {
+  function resolveAcceptDialogue(giver, quest, options) {
     var opts = options || {};
     var profileKey = giver.npcProfileRef || giver.giverId;
     var sessionKey = opts.reputationSessionKey || opts.sessionKey || "default";
@@ -240,7 +300,7 @@
       tier = Rep.getTier(repScore);
     }
 
-    var byTier = giver.acceptDialogueByTier;
+    var byTier = giver.acceptDialogueByTier || (quest && quest.sharedAcceptDialogueByTier);
     var line = "";
     var source = "acceptDialogue";
     if (byTier && typeof byTier === "object") {
@@ -257,7 +317,7 @@
       source = "acceptDialogue";
     }
 
-    var minTier = giver.minTierToAccept || null;
+    var minTier = giver.minTierToAccept || (quest && quest.minTierToAccept) || null;
     var canAccept = true;
     var blockReason = "";
     if (minTier && Rep) {
@@ -292,7 +352,7 @@
     if (!quest) throw new Error("Quest not found: " + questId);
     var giver = getQuestGiver(quest, giverId);
     if (!giver) throw new Error("Quest giver not found: " + giverId);
-    return resolveAcceptDialogue(giver, options);
+    return resolveAcceptDialogue(giver, quest, options);
   }
 
   global.QuestRuntime = {
@@ -303,6 +363,8 @@
     getQuestGiver: getQuestGiver,
     evaluateFactMatch: evaluateFactMatch,
     evaluateQuestCompletion: evaluateQuestCompletion,
+    pickOutcomeBranch: pickOutcomeBranch,
+    aggregateInterpretedMetrics: aggregateInterpretedMetrics,
     runQuestTurnIn: runQuestTurnIn,
     listQuestGiverOptions: listQuestGiverOptions,
     resolveAcceptDialogue: resolveAcceptDialogue,

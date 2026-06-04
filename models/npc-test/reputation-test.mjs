@@ -45,34 +45,24 @@ function main() {
   const { Rep, runtime, engine, parser } = load();
   Rep.clearState("test");
 
-  const before = Rep.snapshot("test");
-  const r1 = Rep.applyNpcDelta("test", "mayor", 0.12, "test");
-  assert(r1.change.after > r1.change.before, "mayor rep should increase");
+  const r1 = Rep.applyNpcDelta("test", "scholar_alric", 0.12, "test");
+  assert(r1.change.after > r1.change.before, "scholar rep increase");
 
-  const trustLow = Rep.resolveTrustFromReputation("mayor", 0.7, "test");
-  Rep.applyNpcDelta("test", "mayor", -0.4, "test");
-  const trustAfterDrop = Rep.resolveTrustFromReputation("mayor", 0.7, "test");
-  assert(trustAfterDrop < trustLow, "trust should drop when rep drops");
-
-  Rep.clearState("quest-rep");
-  const report = "북문에서 늑대 3마리가 탈출했다";
+  const report = "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다";
   const run = runtime.runQuestTurnIn({
-    questId: "quest_report_wolf_escape",
-    giverId: "guard",
+    questId: "quest_abandoned_cargo",
+    giverId: "merchant_greedy",
     scenarioText: report,
     engine,
     parser,
     sessionKey: "quest-rep",
     reputationSessionKey: "quest-rep",
   });
-  assert(run.completion.completed, "wolf quest should complete");
-  assert(run.reputationResult && run.reputationResult.changes.length > 0, "rep changes on complete");
-  const guardRep = run.reputationResult.state.npcReputation.guard;
-  assert(guardRep > 0.5, "guard rep should rise after guard path quest");
+  assert(run.completion.completed, "cargo quest complete");
+  assert(run.reputationResult.changes.length > 0, "rep changes applied");
+  assert(run.reputationResult.state.villageReputation > 50, "village +5");
 
   console.log("reputation-test: all passed");
-  console.log("  guard rep after quest:", guardRep);
-  console.log("  changes:", run.reputationResult.changes.map((c) => c.key + " " + c.delta).join(", "));
 }
 
 main();

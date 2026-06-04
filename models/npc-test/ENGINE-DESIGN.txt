@@ -1,0 +1,207 @@
+================================================================================
+  Project-Nova / models/npc-test — 정보·퀘스트 엔진 설계 정리
+  (코드 기준, 2026-05 기현 브랜치)
+================================================================================
+
+1. 이것이 무엇인가
+--------------------------------------------------------------------------------
+- 언리얼 C++ 게임 엔진이 아님.
+- 브라우저(index.html) + Node(.mjs 테스트)에서 동작하는 결정론적 "정보 왜곡·전파" 프로토타입.
+- 목표: NPC가 받는 정보는 항상 왜곡·해석을 거친 뒤만 존재하고, LLM은 그 JSON만 보고 대사를 생성.
+
+
+2. 폴더·모듈 구성
+--------------------------------------------------------------------------------
+  quest-system.js     핵심 엔진 (왜곡, 전파, KB, executeScenario, 대화 진입)
+  app.js              한국어 파서 → facts[]
+  dictionaries.js     행동·장소·분류 사전
+  quest-runtime.js    퀘스트 로드, factMatch, outcomes[] 분기, turn-in, 의뢰 대사(tier)
+  quests-draft.json   정식 퀘스트 quest_abandoned_cargo (늑대 등은 _archivedQuests)
+  reputation-system.js  플레이어↔NPC·마을 평판 → 신뢰·의뢰 문장
+  reputation-config.json
+  llm-adapter.js      mock / OpenAI·Anthropic (live 선택)
+  llm-settings.js     UI + localStorage
+  npcs.json, player-profile.json  액터 프로필
+  data-loader.js      JSON 프로필 → registerProfiles
+
+  테스트: distortion-test.mjs, integration-test.mjs, quest-test.mjs,
+          reputation-test.mjs, accept-dialogue-test.mjs, cargo-slice-report.mjs
+
+
+3. 데이터 모델 (quest-system.js)
+--------------------------------------------------------------------------------
+
+3.1 InfoAtom
+  - 한 덩어리 정보 단위.
+  - truth_value: subject, action, target, object, quantity, certainty,
+                 is_countable, action_type, parse_mode, parse_confidence ...
+  - metadata: origin, source, creation_tick, applied_rules[], rumor, source_chain
+
+3.2 NPC
+  - stats: fear, hostility, trust, credulity (0~1)
+  - persona: fearful_guard | cynical_merchant | calm_scholar | hotblood_hunter
+  - reputation (Map): NPC가 "주제"에 대해 갖는 평판 (예: 늑대 0.2) → 왜곡 엔진 전용
+  - relations (Map): 다른 NPC id → trustLevel
+  - knowledgeBase: 수신·해석된 InfoAtom 누적
+
+3.3 KnowledgeBase
+  - subject+action+target+object 키로 merge (수량·확신은 충돌 시 보수적 max)
+  - 위협(threat/tactical_move) vs 침착(state) 동시 존재 시 확신 감쇠
+  - tick 기반 certainty decay (KB_DECAY_PER_TICK)
+
+
+4. 정보 처리 파이프라인 (핵심)
+--------------------------------------------------------------------------------
+
+  [플레이어 문장] ──app.js 파서──► facts[]
+         │
+         ▼
+  executeScenario(overrides)
+         │
+         ├─ sender / receiver (NPC 또는 createPlayerActor)
+         ├─ propagateFactBundle(sender, receiver, info, facts, options)
+         │     각 fact:
+         │       factInputToAtom
+         │       distortInformation  ← 발신자 성향·평판·신뢰·quantityMode
+         │       reinterpretInfo     ← 수신자 credulity·평판·신뢰
+         │     applyBundleCoherence  ← 복수 fact 장소·톤 정합
+         │     receiver.knowledgeBase.update
+         │
+         ├─ interpretedFacts  ← NPC가 "믿게 된" 정보 (LLM 입력의 유일한 사실 소스)
+         ├─ generateNPCDialogue → buildContextGrounding → LlmAdapter(mock/live)
+         └─ (선택) compareWithGroundTruth ← 개발 QA용, LLM 경로와 분리
+
+4.1 distortInformation (발신 왜곡)
+  - 공포·적대 임계값 → 수량 증폭, 대상/행동 위협화
+  - NPC 주제 reputation → fear/hostility/certainty 조절 (reputation_* rules)
+  - quantityMode: faithful | dramatic
+  - persona 가중 (PERSONA_DISTORTION_PROFILES)
+  - 소문(rumor) 플래그 반영
+
+4.2 reinterpretInfo (수신 해석)
+  - credulity → 수량·확신 증폭 (credulity_qty_amp, credulity_certainty_blend)
+  - subject reputation, receiver low trust, partial trust degrade
+  - 상태문 재해석 (태연/침착 → 초조/긴장, state_reinterpret_unsettled)
+
+4.3 propagateFactBundle (전파)
+  - trustLevel < TRUST_BLOCK(0.2) → 전파 차단
+  - TRUST_PARTIAL_MIN(0.08)~BLOCK → partialTrust, 확신 degrade
+  - auditDiff: input / distorted / interpreted + applied_rules
+  - propagateChain: 다단 A→B→A, hop마다 HOP_CERTAINTY_DECAY
+
+
+5. 평판 — 두 종류 (혼동 주의)
+--------------------------------------------------------------------------------
+
+  (A) NPC 주제 평판 — NPC.reputation, getSubjectReputation
+      → distortInformation / reinterpretInfo 에서만 사용
+
+  (B) 플레이어↔NPC 평판 — reputation-system.js
+      → defaultTrustToPlayer 보정 (resolveTrustToReceiver)
+      → 퀘스트 완료 시 playerRepDelta 적용
+      → acceptDialogueByTier 로 의뢰 대사 분기 (quest-runtime.getAcceptDialogue)
+
+  tier: hostile | wary | neutral | friendly | trusted
+  마을 평판: villageReputation 0~100
+
+
+6. LLM 레이어
+--------------------------------------------------------------------------------
+  - 입력: interpretedFacts → toGroundedFact → [Grounded DATA] JSON 만
+  - 금지: 파서 facts[], baseInfo 원문, groundTruth JSON → LLM에 넣지 않음
+  - createSoftGuardrailPrompt: DATA만 진실, 말투만 창의
+  - mock: llm-adapter.js / quest-system mockLLMGenerate
+  - live: LlmAdapter.configure + enrichDialogueResult (비동기)
+  - API 키: llm-config.local.json (git 제외) 또는 UI localStorage
+
+
+7. 퀘스트 레이어 (quest-runtime.js + quests-draft.json)
+--------------------------------------------------------------------------------
+
+  정식 퀘스트 (active):
+    - quest_abandoned_cargo  밀수업자의 버려진 화물
+    - 의뢰인: guard_timid | merchant_greedy | scholar_alric
+    - 보고 대상: scholar_alric (turnInTarget)
+    - outcomes[]: interpreted 수량·확신 → authority_path | black_market_path
+    - sharedAcceptDialogueByTier + minTierToAccept: neutral
+
+  보관 (_archivedQuests): quest_report_wolf_escape, quest_report_rebel_chase
+
+  런타임이 하는 일:
+    - loadQuestCatalog / getQuest / getQuestGiver
+    - runQuestTurnIn: 파서 → executeScenario → factMatch(또는 factMatchAlt) → pickOutcomeBranch
+    - getAcceptDialogue: giver + quest.sharedAcceptDialogueByTier
+    - applyQuestEffects: playerRepDelta.village, current_giver, worldFlags 객체
+
+  런타임이 하지 않는 일:
+    - processSteps 순차 진행 (dialogue/travel/interact/fact_input)
+    - 아이템 수거·전달, 맵 트리거, intro/accept 연출 자동 실행
+    - worldFlags / gold 를 게임 상태에 반영 (JSON만 반환)
+
+
+8. 세션
+--------------------------------------------------------------------------------
+  - SESSION_STORE (quest-system): persistSession + sessionKey → NPC KB 유지
+  - ReputationSystem SESSION_STORE: 평판 상태 유지 (ui-reputation 등)
+
+
+9. 설계 원칙 (코드가 따르는 것)
+--------------------------------------------------------------------------------
+  1) 결정론: 동일 입력·스탯·신뢰 → 동일 왜곡·applied_rules
+  2) NPC·LLM이 보는 사실 = interpretedFacts (전파·해석 이후)
+  3) LLM = 연출(말투), 사실 생성·추측 금지
+  4) 퀘스트: interpretedFacts 기준 outcome 분기 + 경로별 propagationOptions·평판·대사
+  5) 플레이어 프로필: 전파용 얇은 JSON (RPG 스탯 LLM 미주입)
+
+
+10. 언리얼 연동 시 권장 API (아직 미구현)
+--------------------------------------------------------------------------------
+
+  NpcParser.parseScenarioText(text)
+    → buildFactsFromParsed → facts[]
+
+  QuestRuntime.getAcceptDialogue(questId, giverId, { sessionKey })
+    → { line, canAccept, tier, repScore, source }
+
+  QuestRuntime.runQuestTurnIn({
+    questId, giverId, scenarioText | facts,
+    sessionKey, reputationSessionKey
+  })
+    → {
+         completion: { completed, matches },
+         outcome: { rewards, worldFlags, ... },
+         engineResult: { propagation, dialogue, playerReputationSnapshot },
+         reputationResult
+       }
+
+  연동 방식 후보: 로컬 HTTP POST, Saved/*.json 와치, WebBrowser 위젯
+
+
+11. 현재 부족한 것 (객관)
+--------------------------------------------------------------------------------
+  - UE 퀘스트 플레이 (수락·이동·루팅·대화 UI)
+  - WorldTruth / PlayerKnowledge 레이어 (플레이 경험 누적)
+  - processSteps 실행기
+  - 의뢰 시점 "서로 다른 소문" 브리핑 (세 가지 색 류) — 별도 콘텐츠·연출
+  - 퀘스트 본편용 콘텐츠 2개 초안 외 확장
+  - C++ 엔진 이식 (당장은 Node/브라우저 브릿지가 현실적)
+
+
+12. 테스트 현황 (Node)
+--------------------------------------------------------------------------------
+  distortion-test.mjs      11 passed
+  integration-test.mjs      7 passed
+  quest-test.mjs            cargo authority vs black_market 분기
+  reputation-test.mjs       평판·village·current_giver
+  accept-dialogue-test.mjs  tier별 의뢰 대사·거절
+  cargo-slice-report.mjs    3 의뢰인 경로 리포트
+
+
+13. Git
+--------------------------------------------------------------------------------
+  브랜치: 기현
+  npc-test 관련 최근: 평판 시스템, tier 의뢰 대사, 퀘스트 런타임, LLM 어댑터 등
+
+================================================================================
+  문서 끝 — 수정 시 quest-system.js / quest-runtime.js 와 함께 갱신 권장
+================================================================================
