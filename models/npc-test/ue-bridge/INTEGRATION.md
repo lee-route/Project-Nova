@@ -1,5 +1,7 @@
 # Unreal Engine ↔ npc-test API (v1)
 
+**UE 팀 1순위 문서:** `../INTEGRATION-GUIDE.txt` (동일 내용 + Blueprint 체크리스트·트러블슈팅)
+
 `nova/` 프로젝트에는 아직 C++/Blueprint 연동 코드가 없습니다.  
 v1은 **로컬 Node API 서버**에 HTTP로 붙이는 방식을 권장합니다.
 

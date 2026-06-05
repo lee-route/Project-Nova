@@ -19,7 +19,8 @@ npm 사용 가능 시: `npm run api`, `npm run api:smoke`, `npm run api:e2e`
 
 브라우저: `index.html` 을 정적 서버로 연 뒤 Quest Playtest 패널 사용.
 
-언리얼: [ue-bridge/INTEGRATION.md](ue-bridge/INTEGRATION.md) — **세이브는 UE**, API는 turn-in·분기만.
+언리얼: **[INTEGRATION-GUIDE.txt](INTEGRATION-GUIDE.txt)** (UE 팀 1순위) — 세이브는 UE, API는 turn-in·분기만.  
+요약: [ue-bridge/INTEGRATION.md](ue-bridge/INTEGRATION.md) · 서버 실행: [API-QUICKSTART.md](API-QUICKSTART.md)
 
 ## 주요 파일
 

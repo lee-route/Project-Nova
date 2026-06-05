@@ -1,0 +1,273 @@
+================================================================================
+  Project-Nova — 언리얼 연동 가이드 (INTEGRATION-GUIDE)
+  대상: UE Blueprint / C++ 개발자
+  갱신: 2026-06-05
+  상세 스펙: GAME-API.json
+  설계·정책: ENGINE-DESIGN.txt
+  진행 현황: PROGRESS.txt
+================================================================================
+
+  본 문서는 UE 팀이 npc-test Node API v1에 붙이기 위한 실무 가이드입니다.
+  폴더 정리 없이 models/npc-test 루트에 있는 파일 기준으로 작성되었습니다.
+
+
+1. 한 줄 요약
+--------------------------------------------------------------------------------
+  개발 PC에서 Node API 서버를 켠 뒤,
+  UE Blueprint가 POST /v1/quest/turn-in 으로 보고문을 보내고
+  응답의 gold·cargo_destination 을 UE SaveGame에 저장하면 1세로 완성.
+
+
+2. 사전 준비
+--------------------------------------------------------------------------------
+  (1) main 브랜치 pull — models/npc-test 포함
+  (2) Node.js LTS 설치 (https://nodejs.org) — 설치 후 터미널 재시작
+  (3) API 서버 기동 (아래 §3)
+  (4) 브라우저로 http://127.0.0.1:8787/health 확인 (ok: true)
+
+  npm이 안 될 때 (Windows):
+    cd models\npc-test
+    run-api.cmd
+
+  PowerShell:
+    .\run-api.ps1
+
+  포트 변경:
+    node npc-api-server.mjs --port=8788
+
+  UE 에디터와 다른 PC에서 접속:
+    node npc-api-server.mjs --host=0.0.0.0 --port=8787
+
+
+3. 서버가 켜져 있어야 하는 이유
+--------------------------------------------------------------------------------
+  퀘스트 분기·왜곡·파서·평판 로직은 Node 서버(npc-api-server.mjs) 안에 있습니다.
+  UE는 HTTP 클라이언트만 구현하면 됩니다. 엔진 JS를 UE에 직접 넣지 않습니다.
+
+  개발 중: PC에서 API 서버 상시 실행 (터미널 유지)
+  배포 시: 별도 서버 호스팅 또는 패키징 정책은 팀 협의 (v1은 로컬 개발 전제)
+
+
+4. v1에서 쓰는 엔드포인트
+--------------------------------------------------------------------------------
+  필수
+    POST /v1/quest/turn-in     플레이어 보고 → 분기·보상 (UE 핵심)
+
+  권장
+    GET  /v1/quest/meta        의뢰인 목록·예시 보고문
+    GET  /health               서버 생존 확인
+
+  선택
+    GET  /v1/quest/accept-dialogue   수락 대사 (giverId, sessionKey)
+    POST /v1/parse                   파서 디버그
+
+  v1에 없음 (404)
+    POST /v1/dialogue          LLM 대사 (v2)
+    POST /v1/quest/flow        전체 processSteps HTTP (v2)
+
+  travel / interact / 맵 이동 / 3D 대사 / 시네마 → UE 책임
+
+
+5. UE Blueprint 권장 흐름
+--------------------------------------------------------------------------------
+  [퀘스트 수락] (UE 로컬 또는 선택 API)
+    - 의뢰인 선택: guard_timid | merchant_greedy | scholar_alric
+    - UE SaveGame에 questId, giverId 저장
+
+  [플레이]
+    - 맵 이동·조사·아이템 수거 (UE)
+    - 보고 UI에서 scenarioText 수집 (한국어 자유 입력)
+
+  [Turn-in] (필수)
+    1) HTTP POST http://127.0.0.1:8787/v1/quest/turn-in
+    2) Header: Content-Type: application/json
+    3) Body JSON (§6)
+    4) 응답 파싱 → UE SaveGame 반영 (§7)
+    5) 완료 연출·UI (UE)
+
+  [실패 처리]
+    - ok == false → error.code, error.message 표시
+    - HTTP 연결 실패 → 서버 미기동·포트 불일치 확인
+
+
+6. Turn-in 요청 (복사용)
+--------------------------------------------------------------------------------
+  URL:
+    http://127.0.0.1:8787/v1/quest/turn-in
+
+  Method: POST
+
+  Body 예시:
+  {
+    "questId": "quest_abandoned_cargo",
+    "giverId": "guard_timid",
+    "scenarioText": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+    "sessionKey": "player-save-slot-1"
+  }
+
+  필드 설명
+    questId       고정: quest_abandoned_cargo (v1 단일 퀘스트)
+    giverId       퀘스트를 준 의뢰인 (§8 주의)
+    scenarioText  플레이어 보고문 (한국어)
+    sessionKey    슬롯별 고정 문자열 (평판·서버 RAM 데모용)
+
+  선택 필드
+    worldTruthFacts   조사로 알게 된 객관 사실 (§10)
+    applyGameState    false 시 서버 RAM 데모 생략 (UE만 세이브 쓸 때)
+
+
+7. Turn-in 응답 — UE가 반드시 읽을 필드
+--------------------------------------------------------------------------------
+  성공 시 (ok: true):
+
+    completion.completed          bool   퀘스트 완료 여부
+    outcomeBranch.branchId        string authority_path | black_market_path | fallback
+    outcome.rewards.gold          number 골드 보상
+    outcome.worldFlags.cargo_destination
+                                  string authority | black_market | unknown
+
+  UE SaveGame 반영 예
+    PlayerGold += outcome.rewards.gold
+    WorldFlags["cargo_destination"] = outcome.worldFlags.cargo_destination
+    QuestState["quest_abandoned_cargo"].completed = completion.completed
+    QuestState["quest_abandoned_cargo"].branchId = outcomeBranch.branchId
+
+  판정에 쓰지 말 것 (v1)
+    knowledgeAudit.*              진단·로그만 (기만 패널티 v2)
+    gameState.*                     서버 RAM 데모; authoritative save = UE
+
+  실패 시 (ok: false):
+    error.code, error.message
+
+
+8. 자주 하는 실수 — giverId
+--------------------------------------------------------------------------------
+  giverId = 퀘스트를 준 의뢰인 (의뢰 받을 때 선택한 NPC)
+
+    guard_timid
+    merchant_greedy
+    scholar_alric
+
+  보고 수신 NPC (turn-in 대화 상대)는 대부분 scholar_alric 입니다.
+  giverId에 scholar_alric을 넣는 것은 "학자에게 의뢰받은 퀘스트"일 때만 맞습니다.
+
+  의뢰인 목록 확인:
+    GET http://127.0.0.1:8787/v1/quest/meta
+
+
+9. 의뢰인별 플레이 차이 (참고)
+--------------------------------------------------------------------------------
+  동일 보고 "마약초 열두 개":
+    guard_timid / merchant_greedy (dramatic) → qty 증폭 → authority_path, gold 150
+    scholar_alric (faithful)                 → qty 유지 → authority_path, gold 150
+
+  저수량 보고 "마약초 다섯 개" + scholar:
+    → black_market_path, gold 300
+
+  분기 기준은 interpretedFacts (엔진 왜곡 후)이며, 플레이어 원문 직접 사용 안 함.
+
+
+10. WorldTruth (선택, v1 진단만)
+--------------------------------------------------------------------------------
+  조사 완료 시 UE가 아는 사실을 같이 보낼 수 있음:
+
+  "worldTruthFacts": [
+    {
+      "subject": "마약초",
+      "quantity": 12,
+      "is_countable": true,
+      "action_type": "inventory",
+      "target": "안개 계곡"
+    }
+  ]
+
+  v1에서는 knowledgeAudit.worldCompare에만 반영.
+  gold·cargo_destination 분기는 바꾸지 않음.
+
+
+11. Blueprint 구현 체크리스트
+--------------------------------------------------------------------------------
+  [ ] HTTP 모듈 활성화 (Edit → Plugins → HTTP)
+  [ ] TurnInQuest 함수: scenarioText, giverId, sessionKey → JSON POST
+  [ ] OnResponse: JSON 파싱 (Json Utilities 또는 플러그인)
+  [ ] gold, cargo_destination, completed, branchId → SaveGame
+  [ ] ok==false / 연결 실패 UI
+  [ ] 개발 시 API 서버 실행 확인 (/health)
+
+  C++ 대신 Blueprint만으로 가능. VaRest 등 서드파티 JSON 플러그인도 사용 가능.
+
+
+12. 연동 확인 (UE 전에 Node에서)
+--------------------------------------------------------------------------------
+  터미널 A:
+    run-api.cmd
+
+  터미널 B:
+    node api-smoke.mjs
+    (또는 run-api-smoke.cmd)
+
+  전체 회귀 (엔진 담당):
+    node run-all-tests.mjs
+
+
+13. PowerShell 수동 테스트 (UE와 동일 계약)
+--------------------------------------------------------------------------------
+  $body = @{
+    questId = "quest_abandoned_cargo"
+    giverId = "guard_timid"
+    scenarioText = "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다"
+    sessionKey = "ue-player-1"
+  } | ConvertTo-Json -Compress
+
+  Invoke-RestMethod -Uri "http://127.0.0.1:8787/v1/quest/turn-in" `
+    -Method POST -Body $body -ContentType "application/json; charset=utf-8"
+
+
+14. 트러블슈팅
+--------------------------------------------------------------------------------
+  npm 인식 안 됨
+    → run-api.cmd 사용 또는 Node LTS 설치 후 터미널 재시작
+
+  EADDRINUSE (8787 사용 중)
+    → 이미 서버 실행 중이거나 다른 프로세스 점유
+    → --port=8788 로 변경 후 UE URL도 맞출 것
+
+  UE HTTP 실패
+    → 서버 미기동, URL 오타, 방화벽
+    → 127.0.0.1 vs 0.0.0.0 / 포트 일치 확인
+
+  분기가 예상과 다름
+    → giverId·scenarioText 확인
+    → GET /v1/quest/meta 의 exampleReports 참고
+    → 엔진 담당에게 propagation.interpretedFacts 로그 공유
+
+
+15. 담당 분리
+--------------------------------------------------------------------------------
+  엔진·API (models/npc-test, main 반영 완료)
+    - quest-system, parser, turn-in 로직
+    - npc-api-server.mjs, 테스트, 문서
+
+  UE (nova/, 미구현 — 본 가이드 대상)
+    - HTTP 클라이언트, 보고 UI, SaveGame
+    - 맵·이동·조사·연출
+    - (선택) accept-dialogue UI
+
+  LLM API 결제·연동
+    - 대사 품질용; turn-in·분기와 무관
+    - v2 POST /v1/dialogue (아직 HTTP 미노출)
+
+
+16. 관련 파일
+--------------------------------------------------------------------------------
+  INTEGRATION-GUIDE.txt    본 문서 (UE 팀 1순위)
+  API-QUICKSTART.md        서버 실행·스모크 (마크다운)
+  ue-bridge/INTEGRATION.md 동일 내용 요약 (마크다운)
+  GAME-API.json            요청·응답 스키마
+  ENGINE-DESIGN.txt        설계·파이프라인
+  PROGRESS.txt             진행률·로드맵
+
+================================================================================
+  문의 시 엔진 담당에게 전달할 정보:
+    scenarioText, giverId, sessionKey, 응답 JSON 전문, 서버 포트
+================================================================================
