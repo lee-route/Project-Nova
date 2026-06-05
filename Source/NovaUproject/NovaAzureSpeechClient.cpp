@@ -171,6 +171,11 @@ void UNovaAzureSpeechClient::HandleRecognitionResponse(
 		return;
 	}
 
+	if (Confidence <= 0.0f)
+	{
+		Confidence = 0.6f;
+	}
+
 	PendingResultDelegate.ExecuteIfBound(true, DisplayText, Confidence);
 	PendingResultDelegate.Unbind();
 }

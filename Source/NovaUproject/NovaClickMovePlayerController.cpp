@@ -27,6 +27,34 @@ ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 
 	VoiceCaptureComponent = CreateDefaultSubobject<UNovaVoiceCaptureComponent>(TEXT("VoiceCaptureComponent"));
 	CombatVoiceGateComponent = CreateDefaultSubobject<UNovaCombatVoiceGateComponent>(TEXT("CombatVoiceGateComponent"));
+
+	if (VoiceCaptureComponent)
+	{
+		VoiceCaptureComponent->OnVoiceCommandRecognized.AddDynamic(this, &ANovaClickMovePlayerController::OnVoiceCommandRecognized);
+	}
+
+	if (CombatVoiceGateComponent)
+	{
+		CombatVoiceGateComponent->OnCounterSucceeded.AddDynamic(this, &ANovaClickMovePlayerController::OnCounterSucceeded);
+	}
+}
+
+namespace NovaVoiceDebug
+{
+	static FString CommandToDisplayName(ENovaVoiceCommand Command)
+	{
+		switch (Command)
+		{
+		case ENovaVoiceCommand::Bow: return TEXT("활");
+		case ENovaVoiceCommand::Shield: return TEXT("방패");
+		case ENovaVoiceCommand::Scythe: return TEXT("낫");
+		case ENovaVoiceCommand::Hammer: return TEXT("망치");
+		case ENovaVoiceCommand::Help: return TEXT("도와줘");
+		case ENovaVoiceCommand::Cancel: return TEXT("취소");
+		default: return TEXT("None");
+		}
+	}
+
 }
 
 void ANovaClickMovePlayerController::BeginPlay()
@@ -61,16 +89,6 @@ void ANovaClickMovePlayerController::BeginPlay()
 	bIsTopDownCamera = true;
 	ApplyTopDownCamera();
 
-	if (VoiceCaptureComponent)
-	{
-		VoiceCaptureComponent->OnVoiceCommandRecognized.AddDynamic(this, &ANovaClickMovePlayerController::OnVoiceCommandRecognized);
-	}
-
-	if (CombatVoiceGateComponent)
-	{
-		CombatVoiceGateComponent->OnCounterSucceeded.AddDynamic(this, &ANovaClickMovePlayerController::OnCounterSucceeded);
-	}
-
 	if (GEngine)
 	{
 		const FString PawnName = GetPawn() ? GetPawn()->GetClass()->GetName() : TEXT("None");
@@ -83,12 +101,10 @@ void ANovaClickMovePlayerController::BeginPlay()
 
 		if (VoiceCaptureComponent)
 		{
-			GEngine->AddOnScreenDebugMessage(
-				-1,
-				6.0f,
-				FColor::Yellow,
-				TEXT("Voice: set NOVA_AZURE_SPEECH_KEY or Config/LocalNovaVoice.ini")
-			);
+			const FString VoiceStatus = VoiceCaptureComponent->IsListening()
+				? TEXT("Voice: listening (Azure key OK)")
+				: TEXT("Voice: not listening — check LocalNovaVoice.ini or NOVA_AZURE_SPEECH_KEY");
+			GEngine->AddOnScreenDebugMessage(-1, 6.0f, FColor::Yellow, VoiceStatus);
 		}
 	}
 }
@@ -488,7 +504,7 @@ bool ANovaClickMovePlayerController::SwitchSecondaryWeapon(ENovaVoiceCommand Wea
 			-1,
 			1.5f,
 			FColor::Green,
-			FString::Printf(TEXT("Weapon switched: %d"), static_cast<int32>(WeaponCommand))
+			FString::Printf(TEXT("Weapon switched: %s"), *NovaVoiceDebug::CommandToDisplayName(WeaponCommand))
 		);
 	}
 
@@ -552,15 +568,17 @@ void ANovaClickMovePlayerController::RequestCompanionHelp()
 
 void ANovaClickMovePlayerController::OnCounterSucceeded(ENovaBossCounterType CounterType, ENovaVoiceCommand Command)
 {
-	SwitchSecondaryWeapon(Command);
-
 	if (GEngine)
 	{
 		GEngine->AddOnScreenDebugMessage(
 			-1,
 			2.0f,
 			FColor::Emerald,
-			FString::Printf(TEXT("Boss counter success: type=%d weapon=%d"), static_cast<int32>(CounterType), static_cast<int32>(Command))
+			FString::Printf(
+				TEXT("Boss counter success: pattern=%d weapon=%s"),
+				static_cast<int32>(CounterType),
+				*NovaVoiceDebug::CommandToDisplayName(Command)
+			)
 		);
 	}
 }

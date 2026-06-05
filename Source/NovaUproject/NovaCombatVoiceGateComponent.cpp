@@ -1,10 +1,28 @@
 #include "NovaCombatVoiceGateComponent.h"
 
 #include "Engine/Engine.h"
+#include "Misc/ConfigCacheIni.h"
+#include "Misc/Paths.h"
 
 UNovaCombatVoiceGateComponent::UNovaCombatVoiceGateComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
+}
+
+void UNovaCombatVoiceGateComponent::BeginPlay()
+{
+	Super::BeginPlay();
+
+	const FString LocalConfigPath = FPaths::Combine(FPaths::ProjectConfigDir(), TEXT("LocalNovaVoice.ini"));
+	if (GConfig->GetFloat(TEXT("/Script/NovaUproject.NovaVoiceSettings"), TEXT("CounterWindowSeconds"), CounterWindowSeconds, GGameIni))
+	{
+		// DefaultNovaVoice.ini
+	}
+
+	if (FPaths::FileExists(LocalConfigPath))
+	{
+		GConfig->GetFloat(TEXT("/Script/NovaUproject.NovaVoiceSettings"), TEXT("CounterWindowSeconds"), CounterWindowSeconds, LocalConfigPath);
+	}
 }
 
 void UNovaCombatVoiceGateComponent::OpenCounterWindow(ENovaBossCounterType CounterType, float OverrideWindowSeconds)

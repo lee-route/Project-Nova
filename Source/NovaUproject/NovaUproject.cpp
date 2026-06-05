@@ -8,6 +8,8 @@
 #include "Engine/World.h"
 #include "GameFramework/WorldSettings.h"
 #include "NovaGameMode.h"
+#include "NovaClickMovePlayerController.h"
+#include "NovaVoiceCaptureComponent.h"
 #include "Misc/MessageDialog.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/PlayerController.h"
@@ -88,13 +90,29 @@ namespace NovaUprojectEditorWarnings
 				? World->GetWorldSettings()->DefaultGameMode->GetName()
 				: TEXT("None");
 
+		FString VoiceStatus = TEXT("Voice: N/A (Nova PC 아님)");
+		if (ANovaClickMovePlayerController* NovaPC = Cast<ANovaClickMovePlayerController>(PC))
+		{
+			if (const UNovaVoiceCaptureComponent* Voice = NovaPC->GetVoiceCaptureComponent())
+			{
+				VoiceStatus = Voice->IsListening()
+					? TEXT("Voice: listening")
+					: TEXT("Voice: not listening (키/마이크 확인)");
+			}
+			else
+			{
+				VoiceStatus = TEXT("Voice: component missing");
+			}
+		}
+
 		const FString Msg = FString::Printf(
-			TEXT("NOVA PIE 확인\n\nWorld: %s\nWorldSettings Override GM: %s\nAuth GameMode: %s\nPlayerController: %s\nPawn: %s\n\n(여기서 PlayerController가 NovaClickMovePlayerController가 아니면, 시점/클릭무브 코드는 안 탑니다.)"),
+			TEXT("NOVA PIE 확인\n\nWorld: %s\nWorldSettings Override GM: %s\nAuth GameMode: %s\nPlayerController: %s\nPawn: %s\n%s\n\n(PlayerController가 NovaClickMovePlayerController(또는 BP 자식)가 아니면 음성/클릭무브가 동작하지 않습니다.)"),
 			*WorldName,
 			*OverrideGMName,
 			*GMName,
 			*PCName,
-			*PawnName
+			*PawnName,
+			*VoiceStatus
 		);
 
 		FMessageDialog::Open(EAppMsgType::Ok, FText::FromString(Msg));

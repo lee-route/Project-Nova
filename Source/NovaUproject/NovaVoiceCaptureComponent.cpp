@@ -26,11 +26,54 @@ void UNovaVoiceCaptureComponent::BeginPlay()
 	SpeechClient = NewObject<UNovaAzureSpeechClient>(this);
 	CommandParser = NewObject<UNovaVoiceCommandParser>(this);
 
+	auto LoadString = [](const TCHAR* Key, FString& OutValue, const FString& ExtraIniPath = FString())
+	{
+		FString Loaded = OutValue;
+		if (GConfig->GetString(TEXT("/Script/NovaUproject.NovaVoiceSettings"), Key, Loaded, GGameIni))
+		{
+			OutValue = Loaded;
+		}
+
+		if (!ExtraIniPath.IsEmpty() && FPaths::FileExists(ExtraIniPath))
+		{
+			if (GConfig->GetString(TEXT("/Script/NovaUproject.NovaVoiceSettings"), Key, Loaded, ExtraIniPath))
+			{
+				OutValue = Loaded;
+			}
+		}
+	};
+
+	auto LoadFloat = [](const TCHAR* Key, float& OutValue, const FString& ExtraIniPath = FString())
+	{
+		float Loaded = OutValue;
+		if (GConfig->GetFloat(TEXT("/Script/NovaUproject.NovaVoiceSettings"), Key, Loaded, GGameIni))
+		{
+			OutValue = Loaded;
+		}
+
+		if (!ExtraIniPath.IsEmpty() && FPaths::FileExists(ExtraIniPath))
+		{
+			if (GConfig->GetFloat(TEXT("/Script/NovaUproject.NovaVoiceSettings"), Key, Loaded, ExtraIniPath))
+			{
+				OutValue = Loaded;
+			}
+		}
+	};
+
+	const FString LocalConfigPath = FPaths::Combine(FPaths::ProjectConfigDir(), TEXT("LocalNovaVoice.ini"));
+	LoadString(TEXT("AzureRegion"), AzureRegion, LocalConfigPath);
+	LoadString(TEXT("AzureLanguage"), AzureLanguage, LocalConfigPath);
+
 	if (SpeechClient)
 	{
 		SpeechClient->Region = AzureRegion;
 		SpeechClient->Language = AzureLanguage;
 		SpeechClient->SetSubscriptionKey(ResolveSubscriptionKey());
+	}
+
+	if (CommandParser)
+	{
+		LoadFloat(TEXT("MinCommandConfidence"), CommandParser->MinConfidence, LocalConfigPath);
 	}
 
 	if (bAutoStartListening)

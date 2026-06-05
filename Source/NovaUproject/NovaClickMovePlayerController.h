@@ -36,6 +36,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Voice|Combat")
 	void OpenBossCounterWindow(ENovaBossCounterType CounterType);
 
+	UFUNCTION(BlueprintCallable, Category = "Voice")
+	UNovaVoiceCaptureComponent* GetVoiceCaptureComponent() const { return VoiceCaptureComponent; }
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
