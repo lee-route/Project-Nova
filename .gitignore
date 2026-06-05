@@ -25,6 +25,9 @@ Saved/
 *.dll
 *.exe
 
+# Voice recognition secrets (local only)
+Config/LocalNovaVoice.ini
+
 # Unreal generated project files
 *.xcodeproj
 *.xcworkspace

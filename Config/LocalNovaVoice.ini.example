@@ -1,0 +1,6 @@
+[/Script/NovaUproject.NovaVoiceSettings]
+; Copy this file to Config/LocalNovaVoice.ini and fill in your Azure Speech key.
+; LocalNovaVoice.ini is gitignored.
+AzureSubscriptionKey=YOUR_AZURE_SPEECH_KEY_HERE
+AzureRegion=koreacentral
+AzureLanguage=ko-KR

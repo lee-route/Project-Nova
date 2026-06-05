@@ -2,10 +2,15 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "NovaVoiceTypes.h"
 #include "NovaClickMovePlayerController.generated.h"
 
 class UFXSystemAsset;
+class UNovaCombatVoiceGateComponent;
+class UNovaVoiceCaptureComponent;
 class UUserWidget;
+
+struct FNovaVoiceCommandResult;
 
 UENUM(BlueprintType)
 enum class ENovaControlMode : uint8
@@ -21,6 +26,15 @@ class NOVAUPROJECT_API ANovaClickMovePlayerController : public APlayerController
 
 public:
 	ANovaClickMovePlayerController();
+
+	UFUNCTION(BlueprintCallable, Category = "Combat|Weapon")
+	ENovaVoiceCommand GetEquippedSecondaryWeapon() const { return EquippedSecondaryWeapon; }
+
+	UFUNCTION(BlueprintCallable, Category = "Combat|Weapon")
+	bool SwitchSecondaryWeapon(ENovaVoiceCommand WeaponCommand);
+
+	UFUNCTION(BlueprintCallable, Category = "Voice|Combat")
+	void OpenBossCounterWindow(ENovaBossCounterType CounterType);
 
 protected:
 	virtual void BeginPlay() override;
@@ -75,5 +89,31 @@ private:
 
 	UPROPERTY(EditDefaultsOnly, Category = "Dash")
 	float DashUpwardStrength = 0.0f;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UNovaVoiceCaptureComponent> VoiceCaptureComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice", meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<UNovaCombatVoiceGateComponent> CombatVoiceGateComponent;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Combat|Weapon")
+	ENovaVoiceCommand EquippedSecondaryWeapon = ENovaVoiceCommand::Shield;
+
+	UFUNCTION()
+	void OnVoiceCommandRecognized(const FNovaVoiceCommandResult& CommandResult);
+	void HandleWeaponSwitchInput(ENovaVoiceCommand WeaponCommand);
+	void RequestCompanionHelp();
+
+	UFUNCTION()
+	void OnCounterSucceeded(ENovaBossCounterType CounterType, ENovaVoiceCommand Command);
+
+	void OnWeaponKey1();
+	void OnWeaponKey2();
+	void OnWeaponKey3();
+	void OnWeaponKey4();
+	void OnDebugCounterKeyF5();
+	void OnDebugCounterKeyF6();
+	void OnDebugCounterKeyF7();
+	void OnDebugCounterKeyF8();
 };
 

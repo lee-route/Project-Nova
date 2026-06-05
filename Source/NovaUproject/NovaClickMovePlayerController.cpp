@@ -2,6 +2,8 @@
 
 #include "NovaClickMovePlayerController.h"
 
+#include "NovaCombatVoiceGateComponent.h"
+#include "NovaVoiceCaptureComponent.h"
 #include "InputCoreTypes.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/Character.h"
@@ -22,6 +24,9 @@ ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 	bEnableMouseOverEvents = true;
 
 	DefaultMouseCursor = EMouseCursor::Default;
+
+	VoiceCaptureComponent = CreateDefaultSubobject<UNovaVoiceCaptureComponent>(TEXT("VoiceCaptureComponent"));
+	CombatVoiceGateComponent = CreateDefaultSubobject<UNovaCombatVoiceGateComponent>(TEXT("CombatVoiceGateComponent"));
 }
 
 void ANovaClickMovePlayerController::BeginPlay()
@@ -56,6 +61,16 @@ void ANovaClickMovePlayerController::BeginPlay()
 	bIsTopDownCamera = true;
 	ApplyTopDownCamera();
 
+	if (VoiceCaptureComponent)
+	{
+		VoiceCaptureComponent->OnVoiceCommandRecognized.AddDynamic(this, &ANovaClickMovePlayerController::OnVoiceCommandRecognized);
+	}
+
+	if (CombatVoiceGateComponent)
+	{
+		CombatVoiceGateComponent->OnCounterSucceeded.AddDynamic(this, &ANovaClickMovePlayerController::OnCounterSucceeded);
+	}
+
 	if (GEngine)
 	{
 		const FString PawnName = GetPawn() ? GetPawn()->GetClass()->GetName() : TEXT("None");
@@ -63,8 +78,18 @@ void ANovaClickMovePlayerController::BeginPlay()
 			-1,
 			5.0f,
 			FColor::Cyan,
-			FString::Printf(TEXT("Nova PC BeginPlay. Pawn=%s (V: camera, Shift+V: control)"), *PawnName)
+			FString::Printf(TEXT("Nova PC BeginPlay. Pawn=%s (V: control, 1-4: weapon, F5-F8: counter test)"), *PawnName)
 		);
+
+		if (VoiceCaptureComponent)
+		{
+			GEngine->AddOnScreenDebugMessage(
+				-1,
+				6.0f,
+				FColor::Yellow,
+				TEXT("Voice: set NOVA_AZURE_SPEECH_KEY or Config/LocalNovaVoice.ini")
+			);
+		}
 	}
 }
 
@@ -89,6 +114,18 @@ void ANovaClickMovePlayerController::SetupInputComponent()
 	// Legacy axis mappings (Project Settings -> Input)
 	InputComponent->BindAxis(TEXT("MoveForward"), this, &ANovaClickMovePlayerController::MoveForward);
 	InputComponent->BindAxis(TEXT("MoveRight"), this, &ANovaClickMovePlayerController::MoveRight);
+
+	// Keyboard fallback for weapon switching.
+	InputComponent->BindKey(EKeys::One, IE_Pressed, this, &ANovaClickMovePlayerController::OnWeaponKey1);
+	InputComponent->BindKey(EKeys::Two, IE_Pressed, this, &ANovaClickMovePlayerController::OnWeaponKey2);
+	InputComponent->BindKey(EKeys::Three, IE_Pressed, this, &ANovaClickMovePlayerController::OnWeaponKey3);
+	InputComponent->BindKey(EKeys::Four, IE_Pressed, this, &ANovaClickMovePlayerController::OnWeaponKey4);
+
+	// Debug keys to simulate boss counter windows from the report.
+	InputComponent->BindKey(EKeys::F5, IE_Pressed, this, &ANovaClickMovePlayerController::OnDebugCounterKeyF5);
+	InputComponent->BindKey(EKeys::F6, IE_Pressed, this, &ANovaClickMovePlayerController::OnDebugCounterKeyF6);
+	InputComponent->BindKey(EKeys::F7, IE_Pressed, this, &ANovaClickMovePlayerController::OnDebugCounterKeyF7);
+	InputComponent->BindKey(EKeys::F8, IE_Pressed, this, &ANovaClickMovePlayerController::OnDebugCounterKeyF8);
 }
 
 void ANovaClickMovePlayerController::PlayerTick(float DeltaTime)
@@ -131,6 +168,22 @@ void ANovaClickMovePlayerController::PlayerTick(float DeltaTime)
 
 	const FVector Dir = To.GetSafeNormal();
 	P->AddMovementInput(Dir, 1.0f);
+
+	if (VoiceCaptureComponent && GEngine)
+	{
+		static float DebugAccumulator = 0.0f;
+		DebugAccumulator += DeltaTime;
+		if (DebugAccumulator >= 2.0f)
+		{
+			DebugAccumulator = 0.0f;
+			GEngine->AddOnScreenDebugMessage(
+				9001,
+				2.1f,
+				FColor::White,
+				VoiceCaptureComponent->GetDebugSummary()
+			);
+		}
+	}
 }
 
 void ANovaClickMovePlayerController::SetControlMode(ENovaControlMode NewMode)
@@ -416,4 +469,109 @@ void ANovaClickMovePlayerController::MoveRight(float Value)
 	const FVector Right = FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y);
 	P->AddMovementInput(Right, Value);
 }
+
+bool ANovaClickMovePlayerController::SwitchSecondaryWeapon(ENovaVoiceCommand WeaponCommand)
+{
+	if (WeaponCommand != ENovaVoiceCommand::Bow
+		&& WeaponCommand != ENovaVoiceCommand::Shield
+		&& WeaponCommand != ENovaVoiceCommand::Scythe
+		&& WeaponCommand != ENovaVoiceCommand::Hammer)
+	{
+		return false;
+	}
+
+	EquippedSecondaryWeapon = WeaponCommand;
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(
+			-1,
+			1.5f,
+			FColor::Green,
+			FString::Printf(TEXT("Weapon switched: %d"), static_cast<int32>(WeaponCommand))
+		);
+	}
+
+	return true;
+}
+
+void ANovaClickMovePlayerController::OpenBossCounterWindow(ENovaBossCounterType CounterType)
+{
+	if (CombatVoiceGateComponent)
+	{
+		CombatVoiceGateComponent->OpenCounterWindow(CounterType);
+	}
+}
+
+void ANovaClickMovePlayerController::OnVoiceCommandRecognized(const FNovaVoiceCommandResult& CommandResult)
+{
+	FString RejectReason;
+	if (CombatVoiceGateComponent && !CombatVoiceGateComponent->TryAcceptVoiceCommand(CommandResult, RejectReason))
+	{
+		if (GEngine && !RejectReason.IsEmpty())
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange, RejectReason);
+		}
+		return;
+	}
+
+	switch (CommandResult.Command)
+	{
+	case ENovaVoiceCommand::Bow:
+	case ENovaVoiceCommand::Shield:
+	case ENovaVoiceCommand::Scythe:
+	case ENovaVoiceCommand::Hammer:
+		HandleWeaponSwitchInput(CommandResult.Command);
+		break;
+	case ENovaVoiceCommand::Help:
+		RequestCompanionHelp();
+		break;
+	case ENovaVoiceCommand::Cancel:
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 1.0f, FColor::Silver, TEXT("Voice cancel received"));
+		}
+		break;
+	default:
+		break;
+	}
+}
+
+void ANovaClickMovePlayerController::HandleWeaponSwitchInput(ENovaVoiceCommand WeaponCommand)
+{
+	SwitchSecondaryWeapon(WeaponCommand);
+}
+
+void ANovaClickMovePlayerController::RequestCompanionHelp()
+{
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, TEXT("Companion help requested (voice)"));
+	}
+}
+
+void ANovaClickMovePlayerController::OnCounterSucceeded(ENovaBossCounterType CounterType, ENovaVoiceCommand Command)
+{
+	SwitchSecondaryWeapon(Command);
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(
+			-1,
+			2.0f,
+			FColor::Emerald,
+			FString::Printf(TEXT("Boss counter success: type=%d weapon=%d"), static_cast<int32>(CounterType), static_cast<int32>(Command))
+		);
+	}
+}
+
+void ANovaClickMovePlayerController::OnWeaponKey1() { HandleWeaponSwitchInput(ENovaVoiceCommand::Shield); }
+void ANovaClickMovePlayerController::OnWeaponKey2() { HandleWeaponSwitchInput(ENovaVoiceCommand::Scythe); }
+void ANovaClickMovePlayerController::OnWeaponKey3() { HandleWeaponSwitchInput(ENovaVoiceCommand::Bow); }
+void ANovaClickMovePlayerController::OnWeaponKey4() { HandleWeaponSwitchInput(ENovaVoiceCommand::Hammer); }
+
+void ANovaClickMovePlayerController::OnDebugCounterKeyF5() { OpenBossCounterWindow(ENovaBossCounterType::LaserShield); }
+void ANovaClickMovePlayerController::OnDebugCounterKeyF6() { OpenBossCounterWindow(ENovaBossCounterType::SpaceScythe); }
+void ANovaClickMovePlayerController::OnDebugCounterKeyF7() { OpenBossCounterWindow(ENovaBossCounterType::SummonBow); }
+void ANovaClickMovePlayerController::OnDebugCounterKeyF8() { OpenBossCounterWindow(ENovaBossCounterType::DebrisHammer); }
 

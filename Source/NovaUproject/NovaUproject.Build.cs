@@ -8,9 +8,9 @@ public class NovaUproject : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "Niagara", "UMG" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "Niagara", "UMG", "HTTP", "Json" });
 
-			PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
+			PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore", "AudioCaptureCore" });
 
 			// Editor-only dependencies for PIE warnings.
 			if (Target.bBuildEditor)
