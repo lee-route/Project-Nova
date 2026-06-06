@@ -1,0 +1,109 @@
+{
+  "version": 2,
+  "_scenario": "quest_abandoned_cargo",
+  "reportHigh": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+  "reportLow": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 다섯 개가 들어 있다",
+  "cases": [
+    {
+      "id": "rumor-flag",
+      "input": "소문에 따르면 안개 계곡에 버려진 화물이 있다",
+      "expect": {
+        "blocked": false,
+        "factRumor": true,
+        "rulesInclude": ["rumor_source_unclear"]
+      }
+    },
+    {
+      "id": "faithful-quantity",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+      "options": {
+        "quantityMode": "faithful",
+        "receiverProfileKey": "scholar_alric",
+        "senderFear": 0.2,
+        "receiverCredulity": 0.5
+      },
+      "expect": { "blocked": false, "minQuantity": 10, "maxQuantity": 13, "rulesInclude": ["faithful_qty_preserve"] }
+    },
+    {
+      "id": "dramatic-fear-amp",
+      "input": "안개 계곡에서 마약초 열두 개가 발견됐다",
+      "options": {
+        "quantityMode": "dramatic",
+        "receiverProfileKey": "scholar_alric",
+        "senderProfileKey": "guard_timid",
+        "usePlayerAsSender": false,
+        "senderFear": 0.88,
+        "senderHostility": 0.3
+      },
+      "expect": { "blocked": false, "minQuantity": 11, "rulesInclude": ["fear_qty_amp"] }
+    },
+    {
+      "id": "trust-hard-block",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+      "options": { "trustLevel": 0.05, "allowPartialTrust": false, "receiverProfileKey": "scholar_alric" },
+      "expect": { "blocked": true }
+    },
+    {
+      "id": "trust-partial",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+      "options": { "trustLevel": 0.12, "allowPartialTrust": true, "receiverProfileKey": "scholar_alric" },
+      "expect": { "blocked": false, "partialTrust": true, "rulesInclude": ["partial_trust_degrade"] }
+    },
+    {
+      "id": "bundle-contradiction",
+      "input": "도적 3명이 안개 계곡으로 이동했다. 안개 계곡은 태연하다.",
+      "options": { "senderFear": 0.5, "quantityMode": "faithful", "receiverProfileKey": "scholar_alric" },
+      "expect": {
+        "blocked": false,
+        "factsMin": 2,
+        "bundleContradiction": true,
+        "rulesInclude": ["bundle_same_place_calm_denial"]
+      }
+    },
+    {
+      "id": "high-rep-skip-hostility",
+      "input": "도적 3명이 안개 계곡으로 이동했다",
+      "options": {
+        "senderHostility": 0.9,
+        "senderProfileKey": "guard_timid",
+        "usePlayerAsSender": false,
+        "senderReputation": { "도적": 0.95 },
+        "receiverProfileKey": "scholar_alric"
+      },
+      "expect": { "blocked": false, "rulesInclude": ["reputation_skip_hostility_remap"] }
+    },
+    {
+      "id": "state-no-fear-amp",
+      "input": "안개 계곡에서 공격 징후가 없었다",
+      "options": {
+        "senderFear": 0.95,
+        "senderHostility": 0.95,
+        "quantityMode": "dramatic",
+        "receiverProfileKey": "scholar_alric"
+      },
+      "expect": { "blocked": false, "maxQuantity": 1, "rulesExclude": ["fear_qty_amp"] }
+    },
+    {
+      "id": "kb-merge",
+      "custom": "kb_merge",
+      "expect": { "kbMerge": true }
+    },
+    {
+      "id": "audit-diff-fields",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+      "options": { "receiverProfileKey": "scholar_alric" },
+      "expect": { "blocked": false, "auditDiffMin": 1 }
+    },
+    {
+      "id": "bundle-same-place",
+      "input": "도적 무리가 안개 계곡에서 집결했다. 안개 계곡은 태연한 상태다.",
+      "options": { "senderFear": 0.5, "quantityMode": "faithful", "receiverProfileKey": "scholar_alric" },
+      "expect": {
+        "blocked": false,
+        "factsMin": 2,
+        "bundleContradiction": true,
+        "rulesInclude": ["bundle_same_place_calm_denial"]
+      }
+    }
+  ]
+}

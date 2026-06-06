@@ -1,0 +1,92 @@
+{
+  "version": 3,
+  "primaryQuestId": "quest_abandoned_cargo",
+  "_meta": {
+    "purpose": "왜곡 엔진용 NPC 액터 프로필 (주제별 reputation + persona stats)",
+    "loadVia": "data-loader.js → QuestSystem.registerProfiles",
+    "pairedFiles": ["player-profile.json", "reputation-config.json", "quests-draft.json"],
+    "editorNotes": [
+      "reputation = NPC가 '주제'에 대해 갖는 편향 (distort/reinterpret 전용)",
+      "defaultTrustToPlayer = 플레이어 발신 시 resolveTrustToReceiver 보정",
+      "플레이어↔NPC 평판(tier)은 reputation-config + player-profile.initialNpcReputation"
+    ]
+  },
+  "npcOrder": ["guard_timid", "merchant_greedy", "scholar_alric"],
+  "npcs": {
+    "guard_timid": {
+      "profileKey": "guard_timid",
+      "id": "NPC_GUARD_TIMID",
+      "displayName": "소심한 경비",
+      "persona": "fearful_guard",
+      "questRoles": ["quest_giver"],
+      "propagationPreset": { "quantityMode": "dramatic", "allowPartialTrust": true },
+      "stats": {
+        "fear": 0.88,
+        "hostility": 0.5,
+        "trust": 0.5,
+        "credulity": 0.8
+      },
+      "reputation": {
+        "밀수": 0.12,
+        "밀수 화물": 0.15,
+        "화물": 0.18,
+        "마약초": 0.08,
+        "안개 계곡": 0.22,
+        "도적": 0.28,
+        "촌장": 0.75
+      },
+      "defaultTrustToPlayer": 0.58,
+      "uiHint": "공포·수량 과장. 보고 시 authority 분기 유리"
+    },
+    "merchant_greedy": {
+      "profileKey": "merchant_greedy",
+      "id": "NPC_MERCHANT_GREEDY",
+      "displayName": "탐욕한 상인",
+      "persona": "cynical_merchant",
+      "questRoles": ["quest_giver"],
+      "propagationPreset": { "quantityMode": "dramatic", "allowPartialTrust": true },
+      "stats": {
+        "fear": 0.4,
+        "hostility": 0.4,
+        "trust": 0.55,
+        "credulity": 0.92
+      },
+      "reputation": {
+        "밀수": 0.38,
+        "밀수 화물": 0.42,
+        "화물": 0.52,
+        "마약초": 0.48,
+        "안개 계곡": 0.4,
+        "도적": 0.32,
+        "상인": 0.9
+      },
+      "defaultTrustToPlayer": 0.52,
+      "uiHint": "소문·의심. dramatic 증폭"
+    },
+    "scholar_alric": {
+      "profileKey": "scholar_alric",
+      "id": "NPC_SCHOLAR_ALRIC",
+      "displayName": "학자 알릭",
+      "persona": "calm_scholar",
+      "questRoles": ["quest_giver", "turn_in_target"],
+      "propagationPreset": { "quantityMode": "faithful", "allowPartialTrust": true },
+      "stats": {
+        "fear": 0.3,
+        "hostility": 0.15,
+        "trust": 0.75,
+        "credulity": 0.5
+      },
+      "reputation": {
+        "밀수": 0.58,
+        "밀수 화물": 0.62,
+        "화물": 0.64,
+        "마약초": 0.72,
+        "안개 계곡": 0.68,
+        "도적": 0.45,
+        "촌장": 0.85
+      },
+      "defaultTrustToPlayer": 0.7,
+      "uiHint": "faithful 보존. turn-in 수신자. 소량 보고 → black_market 가능"
+    }
+  }
+}

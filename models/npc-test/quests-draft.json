@@ -1,0 +1,256 @@
+{
+  "version": 3,
+  "primaryQuestId": "quest_abandoned_cargo",
+  "_meta": {
+    "purpose": "정식 퀘스트: 밀수업자의 버려진 화물. npc-test·UE 연동 기준.",
+    "designPattern": "interpretedFacts 수량·확신 → outcomes[] 분기 (authority vs black_market)",
+    "lastUpdated": "2026-05-27",
+    "npcDataFile": "npcs.json",
+    "playerDataFile": "player-profile.json",
+    "reputationConfigFile": "reputation-config.json",
+    "editorNotes": [
+      "NPC 주제별 reputation = 왜곡 엔진 (quest-system NPC.reputation)",
+      "플레이어↔NPC 평판 = reputation-system",
+      "playerRepDelta.current_giver → 보고 대상 npcProfileRef",
+      "playerRepDelta.village → villageRepDelta",
+      "neutral tier → giver.acceptDialogue (의뢰인별), 그 외 tier → sharedAcceptDialogueByTier",
+      "runProcessSteps = dialogue/travel 스텁 + fact_input 시 runQuestTurnIn"
+    ]
+  },
+
+  "quests": [
+    {
+      "id": "quest_abandoned_cargo",
+      "status": "active",
+      "title": "밀수업자의 버려진 화물",
+      "summary": "안개 계곡의 버려진 밀수 화물을 조사해 학자 알릭에게 보고한다. NPC가 믿는 수량·확신에 따라 마을 처분(공식 vs 암시장)이 갈린다.",
+
+      "minTierToAccept": "neutral",
+      "sharedAcceptDialogueByTier": {
+        "hostile": "너 같은 사기꾼의 말은 듣지 않는다. 물러가라.",
+        "wary": "화물이 있다고? 흐음... 딱히 믿음이 안 가는군. 증거가 더 확실해야겠어.",
+        "neutral": "계곡 쪽에 밀수꾼들이 버리고 간 화물이 있다는 소문이 돌더군. 조사해서 보고해주겠나?",
+        "friendly": "자네라면 믿을 수 있지. 계곡의 위험한 화물 상태를 정확히 파악해서 나에게만 먼저 알려주게.",
+        "trusted": "아, 자네 왔는가! 지금 마을 안전을 위협하는 화물 정보가 급히 필요하네. 자네의 판단을 믿겠네.",
+        "refused": "지금은 네 말을 믿을 수 없군. 마을 신뢰부터 쌓고 오게."
+      },
+
+      "introNpcRef": "scholar_alric",
+      "introDialogue": "안개 계곡에 버려진 화물 소문이야. 경비·상인·내 관점 중 누구 일로 맡을지 정해.",
+      "playerInputHintFinal": "예: 안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+      "expectedParseExample": {
+        "subjectContains": "화물",
+        "targetContains": "계곡",
+        "objectContains": "마약",
+        "quantity": 12
+      },
+
+      "finalObjective": {
+        "id": "obj_report_cargo",
+        "type": "turn_in_fact",
+        "description": "현장 조사 후 학자 알릭에게 보고",
+        "factMatch": {
+          "_comment": "복합문 시 마약초 fact(F02) 또는 화물+계곡(F01) 중 하나 매칭",
+          "subjectContains": "마약",
+          "minQuantity": 1,
+          "minCertainty": 0.3
+        },
+        "factMatchAlt": {
+          "subjectContains": "화물",
+          "targetContains": "계곡",
+          "minCertainty": 0.3
+        }
+      },
+
+      "outcomes": [
+        {
+          "id": "authority_path",
+          "label": "공식 확보 (과장된 위험 보고)",
+          "condition": {
+            "interpreted_quantity_min": 10,
+            "interpreted_certainty_min": 0.6
+          },
+          "effects": {
+            "questState": "completed",
+            "rewards": { "gold": 150, "xp": 120 },
+            "worldFlags": {
+              "is_cargo_secured": true,
+              "cargo_destination": "authority"
+            },
+            "narration": "화물이 관청 쪽으로 인도되었다.",
+            "playerRepDelta": { "village": 5, "current_giver": 0.1, "scholar_alric": 0.08 }
+          }
+        },
+        {
+          "id": "black_market_path",
+          "label": "암시장 유입 (소량·애매한 보고)",
+          "condition": {
+            "interpreted_quantity_max": 9,
+            "interpreted_certainty_min": 0.4
+          },
+          "effects": {
+            "questState": "completed",
+            "rewards": { "gold": 300, "xp": 80 },
+            "worldFlags": {
+              "is_cargo_secured": true,
+              "cargo_destination": "black_market"
+            },
+            "narration": "화물 규모가 작다는 보고가 퍼지며 암시장 쪽으로 새었다.",
+            "playerRepDelta": { "village": 2, "current_giver": 0.05, "merchant_greedy": 0.12 }
+          }
+        }
+      ],
+
+      "outcomeFallback": {
+        "questState": "completed",
+        "rewards": { "gold": 80, "xp": 50 },
+        "worldFlags": { "is_cargo_secured": true, "cargo_destination": "unknown" },
+        "narration": "보고는 접수되었으나 규모 판단이 불명확하다."
+      },
+
+      "questGivers": [
+        {
+          "giverId": "guard_timid",
+          "label": "소심한 경비의 의뢰",
+          "npcProfileRef": "guard_timid",
+          "acceptDialogue": "계곡 화물? 위험할지도 몰라… 네가 대신 확인해줘.",
+          "uiHint": "공포·수량 과장. 알릭에게 보고 시 authority 분기 유리",
+
+          "turnInTarget": { "npcProfileRef": "scholar_alric" },
+
+          "processSteps": [
+            {
+              "stepId": "gt_s1",
+              "order": 1,
+              "type": "dialogue",
+              "location": "마을 정문",
+              "title": "겁먹은 경비 브리핑",
+              "npcLine": "밀수꾼들이 도망치다 화물을 버렸대. 마약초가 잔뜩일 거야!",
+              "playerAction": "대화"
+            },
+            {
+              "stepId": "gt_s2",
+              "order": 2,
+              "type": "travel",
+              "location": "안개 계곡",
+              "title": "현장 조사",
+              "playerAction": "존 진입"
+            },
+            {
+              "stepId": "gt_s3",
+              "order": 3,
+              "type": "fact_input",
+              "location": "안개 계곡",
+              "title": "알릭에게 보고",
+              "triggersEngine": true,
+              "playerAction": "playerInputHintFinal 참고"
+            }
+          ],
+
+          "experience": {
+            "propagationOptions": { "quantityMode": "dramatic", "allowPartialTrust": true },
+            "expectedDistortionFlavor": ["fear_qty_amp", "credulity_qty_amp"],
+            "completionDialogue": "그렇게 많았다고? 당장 기록하겠네."
+          }
+        },
+        {
+          "giverId": "merchant_greedy",
+          "label": "탐욕한 상인의 의뢰",
+          "npcProfileRef": "merchant_greedy",
+          "acceptDialogue": "계곡 화물? 값나가는 건 내가 챙기지. 알릭에게만 먼저 말해.",
+          "uiHint": "dramatic·소문. 수량 과장 → authority 또는 암시장",
+
+          "turnInTarget": { "npcProfileRef": "scholar_alric" },
+
+          "processSteps": [
+            {
+              "stepId": "mg_s1",
+              "order": 1,
+              "type": "dialogue",
+              "location": "시장",
+              "title": "상인 브리핑",
+              "npcLine": "밀수꾼이 금빛 상자를 버렸다더군. 많이 남았을 거야.",
+              "playerAction": "대화"
+            },
+            {
+              "stepId": "mg_s2",
+              "order": 2,
+              "type": "travel",
+              "location": "안개 계곡",
+              "title": "현장 확인",
+              "playerAction": "존 진입"
+            },
+            {
+              "stepId": "mg_s3",
+              "order": 3,
+              "type": "fact_input",
+              "location": "학자 서재",
+              "title": "알릭에게 보고",
+              "triggersEngine": true,
+              "playerAction": "문장 입력"
+            }
+          ],
+
+          "experience": {
+            "propagationOptions": { "quantityMode": "dramatic", "allowPartialTrust": true },
+            "expectedDistortionFlavor": ["rumor_source_unclear", "credulity_qty_amp"],
+            "completionDialogue": "흥미롭군. 기록해 두지."
+          }
+        },
+        {
+          "giverId": "scholar_alric",
+          "label": "학자 알릭의 공식 의뢰",
+          "npcProfileRef": "scholar_alric",
+          "acceptDialogue": "계곡 화물을 사실 위주로 조사해 오게. 숫자는 정확히.",
+          "uiHint": "faithful. 소량 정확 보고 → black_market 분기 가능",
+
+          "turnInTarget": { "npcProfileRef": "scholar_alric" },
+
+          "processSteps": [
+            {
+              "stepId": "sa_s1",
+              "order": 1,
+              "type": "dialogue",
+              "location": "학자 서재",
+              "title": "공식 의뢰",
+              "npcLine": "버려진 밀수 화물과 마약초 규모를 확인하게.",
+              "playerAction": "대화"
+            },
+            {
+              "stepId": "sa_s2",
+              "order": 2,
+              "type": "travel",
+              "location": "안개 계곡",
+              "title": "현장 조사",
+              "playerAction": "존 진입"
+            },
+            {
+              "stepId": "sa_s3",
+              "order": 3,
+              "type": "fact_input",
+              "location": "학자 서재",
+              "title": "알릭에게 보고",
+              "triggersEngine": true,
+              "playerAction": "문장 입력"
+            }
+          ],
+
+          "experience": {
+            "propagationOptions": { "quantityMode": "faithful", "allowPartialTrust": true },
+            "expectedDistortionFlavor": ["faithful_qty_preserve"],
+            "completionDialogue": "정리해 두겠네. 수고했네."
+          }
+        }
+      ]
+    }
+  ],
+
+  "questInstanceTemplate": {
+    "questId": "quest_abandoned_cargo",
+    "state": "offered",
+    "chosenQuestGiverId": null,
+    "currentStepId": null,
+    "completedStepIds": [],
+    "turnInNpcId": "scholar_alric"
+  }
+}
