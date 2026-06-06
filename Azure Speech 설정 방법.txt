@@ -1,0 +1,37 @@
+Azure Speech 설정 방법
+
+■ Region
+koreacentral
+
+■ Speech Key (Key 1)
+팀 채널/DM으로 전달받거나, Azure 포털 → nova-speech → 키 및 엔드포인트 → Key 1 복사
+(GitHub/Git에는 올리지 않음)
+
+■ 프로젝트에 넣는 방법
+1. `현진` 브랜치 pull
+   git pull origin 현진
+
+2. `Config/LocalNovaVoice.ini.example` 복사해서
+   `Config/LocalNovaVoice.ini` 로 이름 변경
+
+3. 파일 내용:
+[/Script/NovaUproject.NovaVoiceSettings]
+AzureSubscriptionKey=여기에_Key1_붙여넣기
+AzureRegion=koreacentral
+AzureLanguage=ko-KR
+
+4. UE5 에디터 재시작 후 PIE(Play) 실행
+5. 마이크 권한 허용
+6. 화면에 "Voice: listening" 뜨면 OK
+
+■ 음성 테스트
+특별히 누를 키 없음. PIE 켜두고 마이크로 말하면 됨.
+- "방패", "활", "낫", "망치", "도와줘"
+
+■ 키보드로 테스트 (음성 없이)
+- 1 방패 / 2 낫 / 3 활 / 4 망치
+- F5~F8 보스 상쇄 윈도우 테스트
+
+■ 참고 문서
+https://github.com/lee-route/Project-Nova/blob/현진/음성인식_남은작업_정리.md
+https://github.com/lee-route/Project-Nova/blob/현진/보스패턴팀_연동_안내.md
