@@ -48,7 +48,7 @@ namespace NovaVoiceDebug
 		case ENovaVoiceCommand::Bow: return TEXT("활");
 		case ENovaVoiceCommand::Shield: return TEXT("방패");
 		case ENovaVoiceCommand::Scythe: return TEXT("낫");
-		case ENovaVoiceCommand::Hammer: return TEXT("망치");
+		case ENovaVoiceCommand::Hammer: return TEXT("검");
 		case ENovaVoiceCommand::Help: return TEXT("도와줘");
 		case ENovaVoiceCommand::Cancel: return TEXT("취소");
 		default: return TEXT("None");
@@ -157,6 +157,11 @@ void ANovaClickMovePlayerController::SetupInputComponent()
 	InputComponent->BindKey(EKeys::F6, IE_Pressed, this, &ANovaClickMovePlayerController::OnDebugCounterKeyF6);
 	InputComponent->BindKey(EKeys::F7, IE_Pressed, this, &ANovaClickMovePlayerController::OnDebugCounterKeyF7);
 	InputComponent->BindKey(EKeys::F8, IE_Pressed, this, &ANovaClickMovePlayerController::OnDebugCounterKeyF8);
+	// Skill keys for current weapon.
+	InputComponent->BindKey(EKeys::Q, IE_Pressed, this, &ANovaClickMovePlayerController::OnSkillQ);
+	InputComponent->BindKey(EKeys::W, IE_Pressed, this, &ANovaClickMovePlayerController::OnSkillW);
+	InputComponent->BindKey(EKeys::E, IE_Pressed, this, &ANovaClickMovePlayerController::OnSkillE);
+	InputComponent->BindKey(EKeys::R, IE_Pressed, this, &ANovaClickMovePlayerController::OnSkillR);
 }
 
 void ANovaClickMovePlayerController::PlayerTick(float DeltaTime)
@@ -608,3 +613,23 @@ void ANovaClickMovePlayerController::OnDebugCounterKeyF6() { OpenBossCounterWind
 void ANovaClickMovePlayerController::OnDebugCounterKeyF7() { OpenBossCounterWindow(ENovaBossCounterType::SummonBow); }
 void ANovaClickMovePlayerController::OnDebugCounterKeyF8() { OpenBossCounterWindow(ENovaBossCounterType::DebrisHammer); }
 
+
+void ANovaClickMovePlayerController::OnSkillQ()
+{
+	BP_UseSkillQ(EquippedSecondaryWeapon);
+}
+
+void ANovaClickMovePlayerController::OnSkillW()
+{
+	BP_UseSkillW(EquippedSecondaryWeapon);
+}
+
+void ANovaClickMovePlayerController::OnSkillE()
+{
+	BP_UseSkillE(EquippedSecondaryWeapon);
+}
+
+void ANovaClickMovePlayerController::OnSkillR()
+{
+	BP_UseSkillR(EquippedSecondaryWeapon);
+}

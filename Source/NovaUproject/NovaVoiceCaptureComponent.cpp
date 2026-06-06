@@ -139,12 +139,21 @@ bool UNovaVoiceCaptureComponent::StartListening()
 		BufferFrames
 	);
 
-	if (!bOpened || !AudioCapture->StartStream())
-	{
-		AudioCapture.Reset();
-		BroadcastDebug(TEXT("Voice: failed to open default microphone"), FColor::Red);
-		return false;
-	}
+	if (!bOpened)
+{
+    AudioCapture.Reset();
+    BroadcastDebug(TEXT("Voice: OpenAudioCaptureStream FAILED"), FColor::Red);
+    return false;
+}
+
+const bool bStarted = AudioCapture->StartStream();
+
+if (!bStarted)
+{
+    AudioCapture.Reset();
+    BroadcastDebug(TEXT("Voice: StartStream FAILED"), FColor::Red);
+    return false;
+}
 
 	CaptureSampleRate = AudioCapture->GetSampleRate() > 0 ? AudioCapture->GetSampleRate() : TargetSampleRate;
 	CaptureNumChannels = 1;
