@@ -101,10 +101,25 @@ void ANovaClickMovePlayerController::BeginPlay()
 
 		if (VoiceCaptureComponent)
 		{
+			UE_LOG(LogTemp, Warning, TEXT("NOVA VoiceCaptureComponent exists. Before StartListening: %s"),
+				VoiceCaptureComponent->IsListening() ? TEXT("Listening") : TEXT("Not Listening"));
+		
+			const bool bStarted = VoiceCaptureComponent->StartListening();
+		
+			UE_LOG(LogTemp, Warning, TEXT("NOVA VoiceCaptureComponent StartListening result: %s / Current: %s"),
+				bStarted ? TEXT("Success") : TEXT("Failed"),
+				VoiceCaptureComponent->IsListening() ? TEXT("Listening") : TEXT("Not Listening"));
+		
 			const FString VoiceStatus = VoiceCaptureComponent->IsListening()
-				? TEXT("Voice: listening (Azure key OK)")
-				: TEXT("Voice: not listening — check LocalNovaVoice.ini or NOVA_AZURE_SPEECH_KEY");
-			GEngine->AddOnScreenDebugMessage(-1, 6.0f, FColor::Yellow, VoiceStatus);
+				? TEXT("Voice: listening")
+				: TEXT("Voice: not listening - check ini or microphone");
+		
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Yellow, VoiceStatus);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("NOVA VoiceCaptureComponent is NULL"));
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, TEXT("VoiceCaptureComponent NULL"));
 		}
 	}
 }

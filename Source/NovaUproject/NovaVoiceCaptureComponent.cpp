@@ -60,7 +60,8 @@ void UNovaVoiceCaptureComponent::BeginPlay()
 		}
 	};
 
-	const FString LocalConfigPath = FPaths::Combine(FPaths::ProjectConfigDir(), TEXT("LocalNovaVoice.ini"));
+	FString LocalConfigPath = FPaths::Combine(FPaths::ProjectConfigDir(), TEXT("LocalNovaVoice.ini"));
+	FConfigCacheIni::NormalizeConfigIniPath(LocalConfigPath);
 	LoadString(TEXT("AzureRegion"), AzureRegion, LocalConfigPath);
 	LoadString(TEXT("AzureLanguage"), AzureLanguage, LocalConfigPath);
 
