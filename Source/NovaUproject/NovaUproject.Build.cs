@@ -8,7 +8,7 @@ public class NovaUproject : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "Niagara", "UMG", "HTTP", "Json" });
+		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "Niagara", "UMG", "HTTP", "Json", "NavigationSystem" });
 
 			PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore", "AudioCaptureCore" });
 

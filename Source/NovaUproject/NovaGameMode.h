@@ -11,5 +11,12 @@ class NOVAUPROJECT_API ANovaGameMode : public AGameModeBase
 
 public:
 	ANovaGameMode();
+
+protected:
+	virtual void StartPlay() override;
+	void ConfigureDungeonNavMesh();
+
+	UPROPERTY(EditDefaultsOnly, Category = "Navigation")
+	float DungeonNavAgentMaxStepHeight = 60.f;
 };
 
