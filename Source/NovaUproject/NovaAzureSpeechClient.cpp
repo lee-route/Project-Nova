@@ -4,6 +4,7 @@
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Json.h"
+#include "NovaVoiceWeaponLexicon.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
@@ -150,18 +151,37 @@ void UNovaAzureSpeechClient::HandleRecognitionResponse(
 	JsonObject->TryGetStringField(TEXT("DisplayText"), DisplayText);
 
 	float Confidence = 0.0f;
+	TArray<TPair<FString, float>> NBestCandidates;
 	const TArray<TSharedPtr<FJsonValue>>* NBestArray = nullptr;
-	if (JsonObject->TryGetArrayField(TEXT("NBest"), NBestArray) && NBestArray && NBestArray->Num() > 0)
+	if (JsonObject->TryGetArrayField(TEXT("NBest"), NBestArray) && NBestArray)
 	{
-		const TSharedPtr<FJsonObject>* BestObject = nullptr;
-		if ((*NBestArray)[0]->TryGetObject(BestObject) && BestObject && BestObject->IsValid())
+		for (const TSharedPtr<FJsonValue>& Entry : *NBestArray)
 		{
-			(*BestObject)->TryGetNumberField(TEXT("Confidence"), Confidence);
-			if (DisplayText.IsEmpty())
+			const TSharedPtr<FJsonObject>* CandidateObject = nullptr;
+			if (!Entry.IsValid() || !Entry->TryGetObject(CandidateObject) || !CandidateObject || !CandidateObject->IsValid())
 			{
-				(*BestObject)->TryGetStringField(TEXT("Display"), DisplayText);
+				continue;
+			}
+
+			FString CandidateText;
+			float CandidateConfidence = 0.0f;
+			(*CandidateObject)->TryGetStringField(TEXT("Display"), CandidateText);
+			(*CandidateObject)->TryGetNumberField(TEXT("Confidence"), CandidateConfidence);
+
+			if (!CandidateText.IsEmpty())
+			{
+				NBestCandidates.Add(TPair<FString, float>(CandidateText, CandidateConfidence));
 			}
 		}
+	}
+
+	if (NBestCandidates.Num() > 0)
+	{
+		FString ResolvedText;
+		float ResolvedConfidence = 0.0f;
+		FNovaVoiceWeaponLexicon::ResolveWeaponRecognitionText(NBestCandidates, ResolvedText, ResolvedConfidence);
+		DisplayText = ResolvedText;
+		Confidence = ResolvedConfidence;
 	}
 
 	if (DisplayText.IsEmpty())

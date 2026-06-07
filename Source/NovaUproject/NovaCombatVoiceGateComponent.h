@@ -35,6 +35,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Voice|Combat")
 	bool TryAcceptVoiceCommand(const FNovaVoiceCommandResult& CommandResult, FString& OutRejectReason);
 
+	/** Call after weapon switch. Returns false when counter window is open but wrong weapon was spoken. */
+	UFUNCTION(BlueprintCallable, Category = "Voice|Combat")
+	bool TryResolveCounterWindow(const FNovaVoiceCommandResult& CommandResult, FString& OutRejectReason);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;

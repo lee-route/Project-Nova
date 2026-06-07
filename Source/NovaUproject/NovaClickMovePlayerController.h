@@ -39,8 +39,21 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Voice")
 	UNovaVoiceCaptureComponent* GetVoiceCaptureComponent() const { return VoiceCaptureComponent; }
 
+	/** BP: 무기 메시·몽타주·이펙트 연출 (C++는 enum 상태만 갱신) */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Voice|Visual")
+	void OnSecondaryWeaponChanged(ENovaVoiceCommand NewWeapon);
+
+	/** BP: 보스 상쇄 성공 연출 (C++는 판정만 처리) */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Voice|Visual")
+	void OnBossCounterVisualSuccess(ENovaBossCounterType CounterType, ENovaVoiceCommand WeaponUsed);
+
+	/** BP: "도와줘" 연출 */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Voice|Visual")
+	void OnCompanionHelpVisualRequested();
+
 protected:
 	virtual void BeginPlay() override;
+	virtual void OnPossess(APawn* InPawn) override;
 	virtual void SetupInputComponent() override;
 	virtual void PlayerTick(float DeltaTime) override;
 
@@ -127,6 +140,8 @@ private:
 
 	UFUNCTION()
 	void OnCounterSucceeded(ENovaBossCounterType CounterType, ENovaVoiceCommand Command);
+
+	void ApplyWeaponVisualToPawn(ENovaVoiceCommand WeaponCommand);
 
 	void OnWeaponKey1();
 	void OnWeaponKey2();
