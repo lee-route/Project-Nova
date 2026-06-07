@@ -80,7 +80,7 @@ ENovaVoiceCommand UNovaCombatVoiceGateComponent::GetRequiredCommandForCounter(EN
 	case ENovaBossCounterType::SummonBow:
 		return ENovaVoiceCommand::Bow;
 	case ENovaBossCounterType::DebrisHammer:
-		return ENovaVoiceCommand::Sword;
+		return ENovaVoiceCommand::Hammer;
 	default:
 		return ENovaVoiceCommand::None;
 	}
@@ -91,7 +91,7 @@ bool UNovaCombatVoiceGateComponent::IsWeaponSwitchCommand(ENovaVoiceCommand Comm
 	return Command == ENovaVoiceCommand::Bow
 		|| Command == ENovaVoiceCommand::Shield
 		|| Command == ENovaVoiceCommand::Scythe
-		|| Command == ENovaVoiceCommand::Sword;
+		|| Command == ENovaVoiceCommand::Hammer;
 }
 
 bool UNovaCombatVoiceGateComponent::TryAcceptVoiceCommand(const FNovaVoiceCommandResult& CommandResult, FString& OutRejectReason)

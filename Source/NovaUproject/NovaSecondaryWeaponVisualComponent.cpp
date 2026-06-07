@@ -37,7 +37,7 @@ void UNovaSecondaryWeaponVisualComponent::EnsureWeaponMeshesCreated()
 		return;
 	}
 
-	CreatePlaceholderWeaponMesh(ENovaVoiceCommand::Sword, CubeMesh, FVector(0.08f, 0.02f, 0.5f), FRotator(0.0f, 0.0f, 90.0f));
+	CreatePlaceholderWeaponMesh(ENovaVoiceCommand::Hammer, CubeMesh, FVector(0.08f, 0.02f, 0.5f), FRotator(0.0f, 0.0f, 90.0f));
 	CreatePlaceholderWeaponMesh(ENovaVoiceCommand::Bow, CylinderMesh ? CylinderMesh : CubeMesh, FVector(0.05f, 0.05f, 0.45f), FRotator(0.0f, 90.0f, 0.0f));
 	CreatePlaceholderWeaponMesh(ENovaVoiceCommand::Scythe, CubeMesh, FVector(0.06f, 0.03f, 0.65f), FRotator(0.0f, 0.0f, 110.0f));
 	CreatePlaceholderWeaponMesh(ENovaVoiceCommand::Shield, CubeMesh, FVector(0.45f, 0.06f, 0.55f), FRotator(0.0f, 0.0f, 0.0f));
@@ -107,7 +107,7 @@ void UNovaSecondaryWeaponVisualComponent::SetVisibleWeapon(ENovaVoiceCommand New
 	if (NewWeapon != ENovaVoiceCommand::Bow
 		&& NewWeapon != ENovaVoiceCommand::Shield
 		&& NewWeapon != ENovaVoiceCommand::Scythe
-		&& NewWeapon != ENovaVoiceCommand::Sword)
+		&& NewWeapon != ENovaVoiceCommand::Hammer)
 	{
 		return;
 	}

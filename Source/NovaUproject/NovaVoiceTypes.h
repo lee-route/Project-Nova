@@ -10,7 +10,7 @@ enum class ENovaVoiceCommand : uint8
 	Bow UMETA(DisplayName = "Bow"),
 	Shield UMETA(DisplayName = "Shield"),
 	Scythe UMETA(DisplayName = "Scythe"),
-	Sword UMETA(DisplayName = "Sword"),
+	Hammer UMETA(DisplayName = "Sword"),
 	Help UMETA(DisplayName = "Help"),
 	Cancel UMETA(DisplayName = "Cancel")
 };

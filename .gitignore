@@ -28,6 +28,9 @@ Saved/
 # Voice recognition secrets (local only)
 Config/LocalNovaVoice.ini
 
+# Local reference docs / extracts (not for repo)
+_local-only/
+
 # Unreal generated project files
 *.xcodeproj
 *.xcworkspace

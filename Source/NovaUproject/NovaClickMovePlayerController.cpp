@@ -49,7 +49,7 @@ namespace NovaVoiceDebug
 		case ENovaVoiceCommand::Bow: return TEXT("활");
 		case ENovaVoiceCommand::Shield: return TEXT("방패");
 		case ENovaVoiceCommand::Scythe: return TEXT("낫");
-		case ENovaVoiceCommand::Sword: return TEXT("검");
+		case ENovaVoiceCommand::Hammer: return TEXT("검");
 		case ENovaVoiceCommand::Help: return TEXT("도와줘");
 		case ENovaVoiceCommand::Cancel: return TEXT("취소");
 		default: return TEXT("None");
@@ -518,7 +518,7 @@ bool ANovaClickMovePlayerController::SwitchSecondaryWeapon(ENovaVoiceCommand Wea
 	if (WeaponCommand != ENovaVoiceCommand::Bow
 		&& WeaponCommand != ENovaVoiceCommand::Shield
 		&& WeaponCommand != ENovaVoiceCommand::Scythe
-		&& WeaponCommand != ENovaVoiceCommand::Sword)
+		&& WeaponCommand != ENovaVoiceCommand::Hammer)
 	{
 		return false;
 	}
@@ -586,7 +586,7 @@ void ANovaClickMovePlayerController::OnVoiceCommandRecognized(const FNovaVoiceCo
 	case ENovaVoiceCommand::Bow:
 	case ENovaVoiceCommand::Shield:
 	case ENovaVoiceCommand::Scythe:
-	case ENovaVoiceCommand::Sword:
+	case ENovaVoiceCommand::Hammer:
 		HandleWeaponSwitchInput(CommandResult.Command);
 		break;
 	case ENovaVoiceCommand::Help:
@@ -649,7 +649,7 @@ void ANovaClickMovePlayerController::OnCounterSucceeded(ENovaBossCounterType Cou
 	OnBossCounterVisualSuccess(CounterType, Command);
 }
 
-void ANovaClickMovePlayerController::OnWeaponKey1() { HandleWeaponSwitchInput(ENovaVoiceCommand::Sword); }
+void ANovaClickMovePlayerController::OnWeaponKey1() { HandleWeaponSwitchInput(ENovaVoiceCommand::Hammer); }
 void ANovaClickMovePlayerController::OnWeaponKey2() { HandleWeaponSwitchInput(ENovaVoiceCommand::Bow); }
 void ANovaClickMovePlayerController::OnWeaponKey3() { HandleWeaponSwitchInput(ENovaVoiceCommand::Scythe); }
 void ANovaClickMovePlayerController::OnWeaponKey4() { HandleWeaponSwitchInput(ENovaVoiceCommand::Shield); }

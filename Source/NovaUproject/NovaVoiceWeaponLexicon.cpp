@@ -30,7 +30,7 @@ namespace
 	static const FWeaponRule G_WeaponRules[] = {
 		{ENovaVoiceCommand::Scythe, G_ScytheContains, G_ScytheExact},
 		{ENovaVoiceCommand::Shield, G_ShieldContains, G_ShieldExact},
-		{ENovaVoiceCommand::Sword, G_SwordContains, G_SwordExact},
+		{ENovaVoiceCommand::Hammer, G_SwordContains, G_SwordExact},
 		{ENovaVoiceCommand::Bow, G_BowContains, G_BowExact},
 	};
 
@@ -314,7 +314,7 @@ ENovaVoiceCommand FNovaVoiceWeaponLexicon::MatchDirectHangul(const FString& Hang
 		|| HangulOnly == TEXT("겁") || HangulOnly == TEXT("점") || HangulOnly == TEXT("김")
 		|| HangulOnly == TEXT("곰") || HangulOnly == TEXT("컴"))
 	{
-		return ENovaVoiceCommand::Sword;
+		return ENovaVoiceCommand::Hammer;
 	}
 
 	if (HangulOnly == TEXT("활"))
@@ -329,7 +329,7 @@ ENovaVoiceCommand FNovaVoiceWeaponLexicon::MatchDirectHangul(const FString& Hang
 
 	if (IsSwordByHangulDecomposition(HangulOnly))
 	{
-		return ENovaVoiceCommand::Sword;
+		return ENovaVoiceCommand::Hammer;
 	}
 
 	return ENovaVoiceCommand::None;
@@ -342,7 +342,7 @@ bool FNovaVoiceWeaponLexicon::IsScytheHangul(const FString& HangulOnly)
 
 bool FNovaVoiceWeaponLexicon::IsSwordHangul(const FString& HangulOnly)
 {
-	return MatchDirectHangul(HangulOnly) == ENovaVoiceCommand::Sword;
+	return MatchDirectHangul(HangulOnly) == ENovaVoiceCommand::Hammer;
 }
 
 ENovaVoiceCommand FNovaVoiceWeaponLexicon::DetectFromRecognizedText(const FString& RecognizedText)
@@ -368,7 +368,7 @@ bool FNovaVoiceWeaponLexicon::IsWeaponCommand(ENovaVoiceCommand Command)
 	return Command == ENovaVoiceCommand::Bow
 		|| Command == ENovaVoiceCommand::Shield
 		|| Command == ENovaVoiceCommand::Scythe
-		|| Command == ENovaVoiceCommand::Sword;
+		|| Command == ENovaVoiceCommand::Hammer;
 }
 
 float FNovaVoiceWeaponLexicon::GetMinConfidenceFor(
@@ -392,12 +392,12 @@ float FNovaVoiceWeaponLexicon::GetMinConfidenceFor(
 		return 0.05f;
 	}
 
-	if (Command == ENovaVoiceCommand::Sword && IsSwordHangul(HangulOnly))
+	if (Command == ENovaVoiceCommand::Hammer && IsSwordHangul(HangulOnly))
 	{
 		return 0.05f;
 	}
 
-	if (Command == ENovaVoiceCommand::Sword && IsSwordByHangulDecomposition(HangulOnly))
+	if (Command == ENovaVoiceCommand::Hammer && IsSwordByHangulDecomposition(HangulOnly))
 	{
 		return 0.05f;
 	}
@@ -409,7 +409,7 @@ FString FNovaVoiceWeaponLexicon::GetWeaponDisplayName(ENovaVoiceCommand Command)
 {
 	switch (Command)
 	{
-	case ENovaVoiceCommand::Sword: return TEXT("검");
+	case ENovaVoiceCommand::Hammer: return TEXT("검");
 	case ENovaVoiceCommand::Bow: return TEXT("활");
 	case ENovaVoiceCommand::Scythe: return TEXT("낫");
 	case ENovaVoiceCommand::Shield: return TEXT("방패");
@@ -448,7 +448,7 @@ bool FNovaVoiceWeaponLexicon::ResolveWeaponRecognitionText(
 			}
 		}
 
-		if (PrimaryDirect == ENovaVoiceCommand::Sword && !IsExactSwordHangul(PrimaryHangul))
+		if (PrimaryDirect == ENovaVoiceCommand::Hammer && !IsExactSwordHangul(PrimaryHangul))
 		{
 			for (const TPair<FString, float>& Candidate : NBestCandidates)
 			{
