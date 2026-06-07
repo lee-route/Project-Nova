@@ -102,10 +102,25 @@ void ANovaClickMovePlayerController::BeginPlay()
 
 		if (VoiceCaptureComponent)
 		{
+			UE_LOG(LogTemp, Warning, TEXT("NOVA VoiceCaptureComponent exists. Before StartListening: %s"),
+				VoiceCaptureComponent->IsListening() ? TEXT("Listening") : TEXT("Not Listening"));
+		
+			const bool bStarted = VoiceCaptureComponent->StartListening();
+		
+			UE_LOG(LogTemp, Warning, TEXT("NOVA VoiceCaptureComponent StartListening result: %s / Current: %s"),
+				bStarted ? TEXT("Success") : TEXT("Failed"),
+				VoiceCaptureComponent->IsListening() ? TEXT("Listening") : TEXT("Not Listening"));
+		
 			const FString VoiceStatus = VoiceCaptureComponent->IsListening()
-				? TEXT("Voice: listening (Azure key OK)")
-				: TEXT("Voice: not listening — check LocalNovaVoice.ini or NOVA_AZURE_SPEECH_KEY");
-			GEngine->AddOnScreenDebugMessage(-1, 6.0f, FColor::Yellow, VoiceStatus);
+				? TEXT("Voice: listening")
+				: TEXT("Voice: not listening - check ini or microphone");
+		
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Yellow, VoiceStatus);
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("NOVA VoiceCaptureComponent is NULL"));
+			GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, TEXT("VoiceCaptureComponent NULL"));
 		}
 	}
 }
@@ -149,6 +164,11 @@ void ANovaClickMovePlayerController::SetupInputComponent()
 	InputComponent->BindKey(EKeys::F6, IE_Pressed, this, &ANovaClickMovePlayerController::OnDebugCounterKeyF6);
 	InputComponent->BindKey(EKeys::F7, IE_Pressed, this, &ANovaClickMovePlayerController::OnDebugCounterKeyF7);
 	InputComponent->BindKey(EKeys::F8, IE_Pressed, this, &ANovaClickMovePlayerController::OnDebugCounterKeyF8);
+	// Skill keys for current weapon.
+	InputComponent->BindKey(EKeys::Q, IE_Pressed, this, &ANovaClickMovePlayerController::OnSkillQ);
+	InputComponent->BindKey(EKeys::W, IE_Pressed, this, &ANovaClickMovePlayerController::OnSkillW);
+	InputComponent->BindKey(EKeys::E, IE_Pressed, this, &ANovaClickMovePlayerController::OnSkillE);
+	InputComponent->BindKey(EKeys::R, IE_Pressed, this, &ANovaClickMovePlayerController::OnSkillR);
 }
 
 void ANovaClickMovePlayerController::PlayerTick(float DeltaTime)
@@ -639,3 +659,23 @@ void ANovaClickMovePlayerController::OnDebugCounterKeyF6() { OpenBossCounterWind
 void ANovaClickMovePlayerController::OnDebugCounterKeyF7() { OpenBossCounterWindow(ENovaBossCounterType::SummonBow); }
 void ANovaClickMovePlayerController::OnDebugCounterKeyF8() { OpenBossCounterWindow(ENovaBossCounterType::DebrisHammer); }
 
+
+void ANovaClickMovePlayerController::OnSkillQ()
+{
+	BP_UseSkillQ(EquippedSecondaryWeapon);
+}
+
+void ANovaClickMovePlayerController::OnSkillW()
+{
+	BP_UseSkillW(EquippedSecondaryWeapon);
+}
+
+void ANovaClickMovePlayerController::OnSkillE()
+{
+	BP_UseSkillE(EquippedSecondaryWeapon);
+}
+
+void ANovaClickMovePlayerController::OnSkillR()
+{
+	BP_UseSkillR(EquippedSecondaryWeapon);
+}

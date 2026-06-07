@@ -61,7 +61,8 @@ void UNovaVoiceCaptureComponent::BeginPlay()
 		}
 	};
 
-	const FString LocalConfigPath = FPaths::Combine(FPaths::ProjectConfigDir(), TEXT("LocalNovaVoice.ini"));
+	FString LocalConfigPath = FPaths::Combine(FPaths::ProjectConfigDir(), TEXT("LocalNovaVoice.ini"));
+	FConfigCacheIni::NormalizeConfigIniPath(LocalConfigPath);
 	LoadString(TEXT("AzureRegion"), AzureRegion, LocalConfigPath);
 	LoadString(TEXT("AzureLanguage"), AzureLanguage, LocalConfigPath);
 	LoadString(TEXT("CaptureDeviceName"), CaptureDeviceName, LocalConfigPath);
@@ -242,13 +243,18 @@ bool UNovaVoiceCaptureComponent::TryOpenCaptureStream(
 		},
 		BufferFrames);
 
-	if (!bOpened || !AudioCapture->StartStream())
+	if (!bOpened)
 	{
-		if (AudioCapture.IsValid())
-		{
-			AudioCapture->AbortStream();
-		}
 		AudioCapture.Reset();
+		BroadcastDebug(TEXT("Voice: OpenAudioCaptureStream FAILED"), FColor::Red);
+		return false;
+	}
+
+	if (!AudioCapture->StartStream())
+	{
+		AudioCapture->AbortStream();
+		AudioCapture.Reset();
+		BroadcastDebug(TEXT("Voice: StartStream FAILED"), FColor::Red);
 		return false;
 	}
 
@@ -416,7 +422,7 @@ void UNovaVoiceCaptureComponent::TickComponent(float DeltaTime, ELevelTick TickT
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if (!bIsListening)
+	if (!bIsListening || bIsRecognizing)
 	{
 		return;
 	}

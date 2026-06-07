@@ -1,0 +1,8 @@
+{
+  "_comment": "복사: llm-config.local.json (git 제외). 브라우저는 localStorage도 사용 가능.",
+  "provider": "openai",
+  "model": "gpt-4o-mini",
+  "apiKey": "sk-REPLACE_ME",
+  "baseUrl": "",
+  "useLive": false
+}

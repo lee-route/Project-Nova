@@ -1,0 +1,214 @@
+================================================================================
+  Project-Nova / models/npc-test — 진행 상황 (PROGRESS)
+  갱신: 2026-06-05
+  브랜치: main (기현과 동일 커밋 11f385e 반영)
+  설계·모듈 상세: ENGINE-DESIGN.txt
+  UE 연동 가이드: INTEGRATION-GUIDE.txt  ◄ UE 팀 1순위
+  API 스펙: GAME-API.json
+================================================================================
+
+
+1. 한 줄 요약
+--------------------------------------------------------------------------------
+  밀수 화물 퀘스트 1본 + 결정론 엔진 + 파서 분리 + HTTP API v1 + 회귀·스모크 검증 완료.
+  main 반영 완료 — 핸드오프 시점. 다음 마일스톤: UE Blueprint turn-in 연동.
+  서버 실행: run-api.cmd 또는 node npc-api-server.mjs
+
+
+2. 진행률 (2026-06-05 기준)
+--------------------------------------------------------------------------------
+  npc-test 엔진·API (본인 담당)     약 85~90%  — 핸드오프 가능
+  팀 목표 (UE에서 1세로 플레이)      약 50~55% — UE turn-in만 남음
+  최종 비전 (v2·LLM HTTP·다퀘스트)  약 35~40%
+
+  LLM API 결제만으로는 완성 아님. turn-in·분기는 LLM 없이 동작.
+  LLM은 대사 연출 레이어 (브라우저 mock/live 경로는 있음, HTTP v2 대기).
+
+
+3. 프로젝트 목적 (진행 관점)
+--------------------------------------------------------------------------------
+  Project-Nova NPC 정보 시스템의 검증용 샌드박스.
+  언리얼 본편에 붙일 "두뇌"를 브라우저·Node·HTTP로 먼저 증명한다.
+
+  플레이어 문장 → facts[] → 왜곡·전파 → interpretedFacts → 퀘스트 분기·보상
+  (기술 원칙은 ENGINE-DESIGN.txt §2)
+
+
+4. 마일스톤 타임라인
+--------------------------------------------------------------------------------
+  [완료] 늑대 퀘스트 제거 → quest_abandoned_cargo 단일 정식화
+  [완료] 평판 tier·의뢰인별 수락 대사·outcome 분기 (authority / black_market)
+  [완료] 로컬 QuestGameState·Quest Playtest UI
+  [완료] 지적 사항 4건 — WorldTruth/PKB, GameClock, source_chain, LlmFactAnchor
+  [완료] npc-parser.js 분리 (app.js = UI만)
+  [완료] API 연동 전 체크리스트 7항 + npc-api-server.mjs v1
+  [완료] mock_fallback 다양화 (anchor 실패 연출)
+  [완료] GET /v1/quest/meta, api-smoke, run-api.cmd/ps1, API-QUICKSTART.md
+  [완료] run-all-tests 15 suites + api-smoke HTTP 검증
+  [완료] main 브랜치 fast-forward 머지·push (커밋 11f385e)
+  [완료] INTEGRATION-GUIDE.txt (UE 팀 연동 가이드)
+  [진행 예정] nova/ UE Blueprint HTTP 클라이언트
+  [대기] API v2 — LLM proxy, 기만→outcome, runQuestFlow HTTP
+
+
+5. 정식 콘텐츠 — quest_abandoned_cargo
+--------------------------------------------------------------------------------
+  제목: 밀수업자의 버려진 화물
+  데이터: quests-draft.json (의뢰인 3명)
+
+  의뢰인 / quantityMode
+    guard_timid      dramatic
+    merchant_greedy  dramatic
+    scholar_alric    faithful
+
+  turn-in 수신: scholar_alric (의뢰인별 turnInTarget)
+
+  기본 보고문 예:
+    "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다"
+
+  outcome (interpreted 수량·확신 기준)
+    authority_path    qty ≥ 10, certainty ≥ 0.6 → gold 150, cargo→authority
+    black_market_path qty ≤ 9, certainty ≥ 0.4  → gold 300, cargo→black_market
+    fallback          그 외                    → gold 80,  destination unknown
+
+
+6. 구현 완료 체크리스트 (기능 단위)
+--------------------------------------------------------------------------------
+  [x] 결정론 왜곡·전파·KB (quest-system.js)
+  [x] 한국어 파서 독립 모듈 (npc-parser.js + dictionaries.js)
+  [x] 퀘스트 turn-in·accept·processSteps·flow (quest-runtime.js)
+  [x] 로컬 gold / worldFlags / questHistory (quest-game-state.js)
+  [x] 플레이어↔NPC 평판 tier (reputation-system.js + JSON 3종)
+  [x] 프로필 v3 동기화 테스트 (profiles-sync-test)
+  [x] LLM mock + live 선택 + fact anchoring + mock_fallback
+  [x] GameClock / WorldTruth / PlayerKnowledge 레이어
+  [x] turn-in knowledgeAudit (진단만, 분기 불변)
+  [x] deception-audit.js
+  [x] session-snapshot (dev용; authoritative save = UE)
+  [x] HTTP API v1 (npc-api-server.mjs, api-bootstrap.mjs)
+  [x] GAME-API.json, INTEGRATION-GUIDE.txt, ue-bridge/INTEGRATION.md
+  [x] 브라우저 Scenario + Quest Playtest (index.html, app.js)
+  [x] Node 회귀 테스트 일괄 (run-all-tests.mjs, 15 suites)
+  [x] HTTP 라이브 스모크 (api-smoke.mjs, api-e2e.mjs)
+
+
+7. 검증된 플레이 차이 (의뢰인)
+--------------------------------------------------------------------------------
+  동일 고수량 보고 (마약초 12개):
+    guard / merchant (dramatic) → interpreted qty ≈ 15, authority_path
+    scholar (faithful)          → interpreted qty ≈ 12, authority_path
+
+  저수량 보고 (마약초 5개) + scholar:
+    → black_market_path, gold 300
+
+  api-smoke (HTTP 라이브):
+    guard_timid + 고수량 보고 → authority_path, gold 150
+
+  3색 브리핑: processSteps[].npcLine (의뢰인별)
+  neutral 수락 대사: giver.acceptDialogue 각각 상이
+
+
+8. 회귀 테스트 (Node)
+--------------------------------------------------------------------------------
+  명령:
+    cd models/npc-test
+    node run-all-tests.mjs
+
+  스위트 (15개, run-all-tests.mjs)
+  ─────────────────────────────────────────
+    npc-parser-test.mjs
+    deception-audit-test.mjs
+    api-server-test.mjs
+    distortion-test.mjs              (11)
+    integration-test.mjs             (9)
+    quest-test.mjs
+    reputation-test.mjs
+    accept-dialogue-test.mjs
+    process-steps-test.mjs
+    profiles-sync-test.mjs
+    quest-flow-test.mjs
+    knowledge-layers-test.mjs
+    source-chain-test.mjs
+    llm-anchoring-test.mjs
+    batch-parse-quick-test.mjs       (80문장)
+
+  HTTP 연동 확인 (서버 실행 중):
+    run-api.cmd  →  run-api-smoke.cmd
+    또는 node api-smoke.mjs
+
+  별도 실행 (시간 소요):
+    node batch-parse-test.mjs --count=2000
+    node api-e2e.mjs
+
+
+9. 로컬에서 체험하는 방법
+--------------------------------------------------------------------------------
+  A) 브라우저 (전체 파이프라인 UI)
+     1) index.html 을 정적 서버로 연다
+     2) Quest Playtest → 의뢰인 선택
+     3) Accept Quest / Next Step / Run Full Flow
+     4) Game State에서 gold, worldFlags.cargo_destination 확인
+
+  B) HTTP API (UE와 동일 계약)
+     1) run-api.cmd  (또는 node npc-api-server.mjs)
+     2) run-api-smoke.cmd  (연동 확인)
+     3) POST /v1/quest/turn-in — INTEGRATION-GUIDE.txt §6~7
+     4) GET /v1/quest/meta — 의뢰인 목록
+     5) 응답 outcome → UE 세이브 반영
+
+
+10. 아직 안 된 것 (로드맵)
+--------------------------------------------------------------------------------
+  [UE — 최우선]
+    - nova/ C++·Blueprint HTTP 클라이언트 0건
+    - POST /v1/quest/turn-in → gold, cargo_destination 세이브
+    - 가이드: INTEGRATION-GUIDE.txt
+
+  [게임 연출 — UE]
+    - processSteps travel / interact (엔진은 스텁만)
+    - introDialogue / completionDialogue 시네마
+    - 아이템 수거·전달
+
+  [API v2]
+    - POST /v1/dialogue (LLM)
+    - POST /v1/quest/flow (전체 processSteps)
+    - 기만·조사 결과가 outcome / 평판에 반영
+
+  [콘텐츠 확장]
+    - 퀘스트 2·3본, 세 가지 색 소문 대규모 연출
+    - live LLM 유료·품질 실측
+
+
+11. 팀 합의 사항 (진행 시 혼동 방지)
+--------------------------------------------------------------------------------
+  - Authoritative save = 언리얼. API sessionKey·QuestGameState는 서버 RAM 데모.
+  - v1 API: turn-in + parse 중심. LLM·travel·full flow는 v2 또는 UE 로컬.
+  - knowledgeAudit / WorldTruth: v1에서 게임 판정에 쓰지 않음 (로그·디버그).
+  - 퀘스트 완료 판정 = interpretedFacts only (파서 원문·플레이어 입력 직접 X).
+  - giverId = 의뢰인 (보고 수신 NPC 아님). §INTEGRATION-GUIDE.txt §8.
+
+
+12. Git·협업
+--------------------------------------------------------------------------------
+  - main = origin/main, 커밋 11f385e (npc-test API v1 포함)
+  - 기현 브랜치 = main 과 동일 시점 (2026-06-05)
+  - UE 팀: main pull → INTEGRATION-GUIDE.txt → run-api.cmd
+  - 문서: PROGRESS / ENGINE-DESIGN / INTEGRATION-GUIDE / GAME-API
+
+
+13. 주요 경로 (파일 찾기)
+--------------------------------------------------------------------------------
+  UE 연동 (1순위)  INTEGRATION-GUIDE.txt
+  진행·테스트       run-all-tests.mjs, package.json, README.md
+  API 서버           npc-api-server.mjs, run-api.cmd, GAME-API.json
+  서버 빠른 시작     API-QUICKSTART.md
+  설계               ENGINE-DESIGN.txt
+  퀘스트 데이터      quests-draft.json
+  파서               npc-parser.js, dictionaries.js
+  UI                 index.html, app.js
+
+================================================================================
+  문서 역할: PROGRESS = 무엇을 했고 무엇이 남았는가
+            ENGINE-DESIGN = 어떻게 동작하는가
+            INTEGRATION-GUIDE = UE 팀이 무엇을 어떻게 붙이는가
+================================================================================

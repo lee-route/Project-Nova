@@ -65,6 +65,17 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadWrite, Category = "ClickMove|VFX", meta = (AllowPrivateAccess = "true"))
 	float ClickMoveIndicatorScale = 1.0f;
+	UFUNCTION(BlueprintImplementableEvent, Category = "Skill")
+	void BP_UseSkillQ(ENovaVoiceCommand CurrentWeapon);
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Skill")
+	void BP_UseSkillW(ENovaVoiceCommand CurrentWeapon);
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Skill")
+	void BP_UseSkillE(ENovaVoiceCommand CurrentWeapon);
+
+	UFUNCTION(BlueprintImplementableEvent, Category = "Skill")
+	void BP_UseSkillR(ENovaVoiceCommand CurrentWeapon);
 
 private:
 	void OnLeftClickPressed();
@@ -73,12 +84,19 @@ private:
 
 	void OnVPressed();
 	void OnDashPressed();
+
+	void OnSkillQ();
+	void OnSkillW();
+	void OnSkillE();
+	void OnSkillR();
+
 	void MoveForward(float Value);
 	void MoveRight(float Value);
 	void ApplyTopDownCamera();
 	void SpawnClickMoveIndicator(const FVector& WorldLocation);
 
 	bool bHasDestination = false;
+
 	FVector Destination = FVector::ZeroVector;
 
 	bool bIsHoldingMove = false;
@@ -134,4 +152,3 @@ private:
 	void OnDebugCounterKeyF7();
 	void OnDebugCounterKeyF8();
 };
-

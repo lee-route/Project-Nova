@@ -1,0 +1,232 @@
+{
+  "version": 2,
+  "_suites": { "cargo": "정식 퀘스트 파서 스모크", "legacy": "일반 한국어 파서 회귀" },
+  "cases": [
+    {
+      "id": "compound-zoo-escape",
+      "suite": "legacy",
+      "input": "동물원에서 늑대 3마리가 탈출했는데, 동물원 원장은 태연하다.",
+      "expect": { "sentenceCount": 2, "factsMin": 2, "anyFact": [{ "subjectContains": "늑대", "actionType": "tactical_move" }, { "subjectContains": "원장", "actionType": "state" }] }
+    },
+    {
+      "id": "cargo-herbs-valley",
+      "suite": "cargo",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+      "expect": { "sentenceCount": 2, "factsMin": 2, "anyFact": [{ "subjectContains": "화물" }, { "subjectContains": "마약초", "quantity": 12 }] }
+    },
+    {
+      "id": "cargo-alt-only",
+      "suite": "cargo",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다",
+      "expect": { "sentenceCount": 1, "factsMin": 1, "anyFact": [{ "subjectContains": "화물", "targetContains": "계곡" }] }
+    },
+    {
+      "id": "cargo-herbs-low",
+      "suite": "cargo",
+      "input": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 다섯 개가 들어 있다",
+      "expect": { "sentenceCount": 2, "factsMin": 2, "anyFact": [{ "subjectContains": "마약초", "quantity": 5 }] }
+    },
+    {
+      "id": "cargo-valley-calm",
+      "suite": "cargo",
+      "input": "도적 3명이 안개 계곡으로 이동했다. 안개 계곡은 태연하다.",
+      "expect": { "sentenceCount": 2, "factsMin": 2 }
+    },
+    {
+      "id": "mayor-poison",
+      "input": "촌장이 독살당했다",
+      "expect": { "sentenceCount": 1, "primary": { "subjectContains": "촌장", "actionType": "threat" } }
+    },
+    {
+      "id": "scout-patrol",
+      "input": "정찰병이 숲에서 순찰 중이다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "tactical_move", "targetContains": "숲" } }
+    },
+    {
+      "id": "merchant-eat",
+      "input": "상인이 주막에서 밥을 먹었다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "routine" } }
+    },
+    {
+      "id": "no-attack-sign",
+      "suite": "cargo",
+      "input": "안개 계곡에서 공격 징후가 없었다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "state" } }
+    },
+    {
+      "id": "rumor-low-certainty",
+      "input": "소문에 따르면 도적이 마을에 들어온 것 같다",
+      "expect": { "sentenceCount": 1, "primary": { "certaintyMax": 0.5 } }
+    },
+    {
+      "id": "bandit-gather",
+      "input": "도적 무리가 동굴에서 집결했다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "tactical_move" } }
+    },
+    {
+      "id": "guard-calm",
+      "input": "경비가 성문에서 침착하다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "state" } }
+    },
+    {
+      "id": "hunter-report",
+      "input": "사냥꾼이 이상 징후를 발견했다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "routine" } }
+    },
+    {
+      "id": "compound-murder-and-calm",
+      "input": "촌장이 독살당했는데, 상점 주인은 태연하다.",
+      "expect": { "sentenceCount": 2, "factsMin": 2, "anyFact": [{ "subjectContains": "촌장", "actionType": "threat" }, { "subjectContains": "주인", "actionType": "state" }] }
+    },
+    {
+      "id": "english-fallback",
+      "input": "wolf 3 move north gate",
+      "expect": { "sentenceCount": 1, "primary": { "quantity": 3 } }
+    },
+    {
+      "id": "korean-number-han",
+      "input": "늑대 한 마리가 숲으로 도주했다",
+      "expect": { "sentenceCount": 1, "primary": { "quantity": 1, "actionType": "tactical_move" } }
+    },
+    {
+      "id": "korean-number-du",
+      "input": "적병 두 명이 교량을 점령했다",
+      "expect": { "sentenceCount": 1, "primary": { "quantity": 2 } }
+    },
+    {
+      "id": "negation-attack",
+      "input": "남문에서 공격이 없었다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "state" } }
+    },
+    {
+      "id": "escape-harbor",
+      "input": "죄수 일행이 항구에서 탈출했다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "tactical_move", "targetContains": "항구" } }
+    },
+    {
+      "id": "meeting-village",
+      "input": "마을 회의가 진행됐다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "routine" } }
+    },
+    {
+      "id": "scholar-tired",
+      "input": "학생이 피곤해 보인다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "state" } }
+    },
+    {
+      "id": "blacksmith-repair",
+      "input": "대장장이가 대장간에서 수리를 했다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "routine", "targetContains": "대장간" } }
+    },
+    {
+      "id": "herb-gather",
+      "input": "약사가 약초원에서 준비를 했다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "routine" } }
+    },
+    {
+      "id": "ambush-wait",
+      "input": "도적이 숲에서 매복했다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "tactical_move" } }
+    },
+    {
+      "id": "kidnap-threat",
+      "input": "귀족이 납치당했다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "threat" } }
+    },
+    {
+      "id": "compound-three-clauses",
+      "input": "늑대 3마리가 북문으로 이동했고, 경비는 긴장했다. 촌장은 회의 중이다.",
+      "expect": { "sentenceCount": 3, "factsMin": 3 }
+    },
+    {
+      "id": "today-topic",
+      "input": "오늘은 상인이 시장에서 장사를 했다",
+      "expect": { "sentenceCount": 1, "primary": { "subjectContains": "상인", "actionType": "routine" } }
+    },
+    {
+      "id": "maybe-uncertain",
+      "input": "아마 도적이 근처에 있는 것 같다",
+      "expect": { "sentenceCount": 1, "primary": { "certaintyMax": 0.5 } }
+    },
+    {
+      "id": "fire-attack",
+      "input": "적이 농장에 불을 질렀다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "threat" } }
+    },
+    {
+      "id": "retreat-tower",
+      "input": "병사들이 탑에서 철수했다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "tactical_move" } }
+    },
+    {
+      "id": "negotiation-palace",
+      "input": "사절이 궁정에서 협상을 했다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "routine", "targetContains": "궁정" } }
+    },
+    {
+      "id": "cough-state",
+      "input": "촌장이 기침을 한다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "state" } }
+    },
+    {
+      "id": "observe-anomaly",
+      "input": "정찰병이 연못 근처에서 이상이 없다고 보고했다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "state" } }
+    },
+    {
+      "id": "compound-escape-and-report",
+      "input": "동물원에서 늑대 2마리가 탈출했고, 경비가 신고했다.",
+      "expect": { "sentenceCount": 2, "factsMin": 2 }
+    },
+    {
+      "id": "seuteureom-count",
+      "input": "서른 마리의 박쥐가 동굴에서 날아다닌다",
+      "expect": { "sentenceCount": 1, "primary": { "quantity": 30 } }
+    },
+    {
+      "id": "assist-helper",
+      "input": "조력자가 마을에서 대기 중이다",
+      "expect": { "sentenceCount": 1, "primary": { "subjectContains": "조력", "actionType": "tactical_move" } }
+    },
+    {
+      "id": "shop-owner-busy",
+      "input": "상점 주인이 바빠 보인다",
+      "expect": { "sentenceCount": 1, "primary": { "subjectContains": "주인", "actionType": "state" } }
+    },
+    {
+      "id": "assassination-palace",
+      "input": "궁정 내부에서 암살이 발생했다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "threat" } }
+    },
+    {
+      "id": "enemy-retreat-chase-daryeoseot",
+      "input": "카엘이 대초원에서 패퇴하는 마을의 반군 무리 대여섯명을 쫓고있다",
+      "expect": {
+        "sentenceCount": 1,
+        "primary": { "subjectContains": "카엘", "actionType": "tactical_move", "quantity": 6 }
+      }
+    },
+    {
+      "id": "combat-status-buff-amplify",
+      "input": "마력이 증폭되었다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "state" } }
+    },
+    {
+      "id": "combat-status-debuff-stun",
+      "input": "병사가 기절했다",
+      "expect": { "sentenceCount": 1, "primary": { "actionType": "threat" } }
+    },
+    {
+      "id": "battle-death-composite",
+      "input": "카엘이 대초원에서 대협곡에서 빠져나온 늑대 3마리와 전투하다가 목을 물려 죽었다.",
+      "expect": {
+        "sentenceCount": 2,
+        "factsMin": 2,
+        "anyFact": [
+          { "subjectContains": "늑대", "actionType": "tactical_move" },
+          { "subjectContains": "카엘", "actionType": "threat" }
+        ]
+      }
+    }
+  ]
+}

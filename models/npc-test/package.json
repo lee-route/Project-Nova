@@ -1,0 +1,19 @@
+{
+  "name": "project-nova-npc-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deterministic NPC info distortion + quest_abandoned_cargo prototype",
+  "scripts": {
+    "test": "node run-all-tests.mjs",
+    "api": "node npc-api-server.mjs",
+    "api:smoke": "node api-smoke.mjs",
+    "api:e2e": "node api-e2e.mjs",
+    "test:api": "node api-server-test.mjs",
+    "test:distortion": "node distortion-test.mjs",
+    "test:integration": "node integration-test.mjs",
+    "test:quest": "node quest-test.mjs",
+    "test:flow": "node quest-flow-test.mjs",
+    "report:cargo": "node cargo-slice-report.mjs",
+    "parse:batch": "node batch-parse-test.mjs"
+  }
+}
