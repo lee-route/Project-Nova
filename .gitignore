@@ -30,6 +30,7 @@ Config/LocalNovaVoice.ini
 
 # Local reference docs / extracts (not for repo)
 _local-only/
+_import_tmp/
 
 # Unreal generated project files
 *.xcodeproj
