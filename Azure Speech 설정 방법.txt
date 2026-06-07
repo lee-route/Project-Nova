@@ -41,5 +41,4 @@ AzureLanguage=ko-KR
 - F5~F8 보스 상쇄 윈도우 테스트
 
 ■ 참고 문서
-https://github.com/lee-route/Project-Nova/blob/현진/음성인식_남은작업_정리.md
-https://github.com/lee-route/Project-Nova/blob/현진/보스패턴팀_연동_안내.md
+README.md (프로젝트 통합·보스 연동·테스트 요약)
