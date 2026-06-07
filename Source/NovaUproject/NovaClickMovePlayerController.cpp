@@ -3,6 +3,7 @@
 #include "NovaClickMovePlayerController.h"
 
 #include "NovaCombatVoiceGateComponent.h"
+#include "NovaSecondaryWeaponVisualComponent.h"
 #include "NovaVoiceCaptureComponent.h"
 #include "InputCoreTypes.h"
 #include "Camera/CameraComponent.h"
@@ -48,7 +49,7 @@ namespace NovaVoiceDebug
 		case ENovaVoiceCommand::Bow: return TEXT("활");
 		case ENovaVoiceCommand::Shield: return TEXT("방패");
 		case ENovaVoiceCommand::Scythe: return TEXT("낫");
-		case ENovaVoiceCommand::Hammer: return TEXT("망치");
+		case ENovaVoiceCommand::Sword: return TEXT("검");
 		case ENovaVoiceCommand::Help: return TEXT("도와줘");
 		case ENovaVoiceCommand::Cancel: return TEXT("취소");
 		default: return TEXT("None");
@@ -96,7 +97,7 @@ void ANovaClickMovePlayerController::BeginPlay()
 			-1,
 			5.0f,
 			FColor::Cyan,
-			FString::Printf(TEXT("Nova PC BeginPlay. Pawn=%s (V: control, 1-4: weapon, F5-F8: counter test)"), *PawnName)
+			FString::Printf(TEXT("Nova PC BeginPlay. Pawn=%s (1:검 2:활 3:낫 4:방패, F5-F8: counter)"), *PawnName)
 		);
 
 		if (VoiceCaptureComponent)
@@ -107,6 +108,12 @@ void ANovaClickMovePlayerController::BeginPlay()
 			GEngine->AddOnScreenDebugMessage(-1, 6.0f, FColor::Yellow, VoiceStatus);
 		}
 	}
+}
+
+void ANovaClickMovePlayerController::OnPossess(APawn* InPawn)
+{
+	Super::OnPossess(InPawn);
+	ApplyWeaponVisualToPawn(EquippedSecondaryWeapon);
 }
 
 void ANovaClickMovePlayerController::SetupInputComponent()
@@ -491,12 +498,13 @@ bool ANovaClickMovePlayerController::SwitchSecondaryWeapon(ENovaVoiceCommand Wea
 	if (WeaponCommand != ENovaVoiceCommand::Bow
 		&& WeaponCommand != ENovaVoiceCommand::Shield
 		&& WeaponCommand != ENovaVoiceCommand::Scythe
-		&& WeaponCommand != ENovaVoiceCommand::Hammer)
+		&& WeaponCommand != ENovaVoiceCommand::Sword)
 	{
 		return false;
 	}
 
 	EquippedSecondaryWeapon = WeaponCommand;
+	ApplyWeaponVisualToPawn(WeaponCommand);
 
 	if (GEngine)
 	{
@@ -508,7 +516,34 @@ bool ANovaClickMovePlayerController::SwitchSecondaryWeapon(ENovaVoiceCommand Wea
 		);
 	}
 
+	OnSecondaryWeaponChanged(WeaponCommand);
 	return true;
+}
+
+void ANovaClickMovePlayerController::ApplyWeaponVisualToPawn(ENovaVoiceCommand WeaponCommand)
+{
+	APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn || !ControlledPawn->GetWorld())
+	{
+		return;
+	}
+
+	UNovaSecondaryWeaponVisualComponent* VisualComponent =
+		ControlledPawn->FindComponentByClass<UNovaSecondaryWeaponVisualComponent>();
+	if (!VisualComponent)
+	{
+		VisualComponent = Cast<UNovaSecondaryWeaponVisualComponent>(
+			ControlledPawn->AddComponentByClass(
+				UNovaSecondaryWeaponVisualComponent::StaticClass(),
+				/*bManualAttachment*/ false,
+				FTransform::Identity,
+				/*bDeferredFinish*/ false));
+	}
+
+	if (VisualComponent)
+	{
+		VisualComponent->SetVisibleWeapon(WeaponCommand);
+	}
 }
 
 void ANovaClickMovePlayerController::OpenBossCounterWindow(ENovaBossCounterType CounterType)
@@ -521,13 +556,8 @@ void ANovaClickMovePlayerController::OpenBossCounterWindow(ENovaBossCounterType 
 
 void ANovaClickMovePlayerController::OnVoiceCommandRecognized(const FNovaVoiceCommandResult& CommandResult)
 {
-	FString RejectReason;
-	if (CombatVoiceGateComponent && !CombatVoiceGateComponent->TryAcceptVoiceCommand(CommandResult, RejectReason))
+	if (!CommandResult.bAccepted)
 	{
-		if (GEngine && !RejectReason.IsEmpty())
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange, RejectReason);
-		}
 		return;
 	}
 
@@ -536,7 +566,7 @@ void ANovaClickMovePlayerController::OnVoiceCommandRecognized(const FNovaVoiceCo
 	case ENovaVoiceCommand::Bow:
 	case ENovaVoiceCommand::Shield:
 	case ENovaVoiceCommand::Scythe:
-	case ENovaVoiceCommand::Hammer:
+	case ENovaVoiceCommand::Sword:
 		HandleWeaponSwitchInput(CommandResult.Command);
 		break;
 	case ENovaVoiceCommand::Help:
@@ -551,6 +581,18 @@ void ANovaClickMovePlayerController::OnVoiceCommandRecognized(const FNovaVoiceCo
 	default:
 		break;
 	}
+
+	if (CombatVoiceGateComponent)
+	{
+		FString CounterRejectReason;
+		if (!CombatVoiceGateComponent->TryResolveCounterWindow(CommandResult, CounterRejectReason))
+		{
+			if (GEngine && !CounterRejectReason.IsEmpty())
+			{
+				GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange, CounterRejectReason);
+			}
+		}
+	}
 }
 
 void ANovaClickMovePlayerController::HandleWeaponSwitchInput(ENovaVoiceCommand WeaponCommand)
@@ -564,6 +606,8 @@ void ANovaClickMovePlayerController::RequestCompanionHelp()
 	{
 		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, TEXT("Companion help requested (voice)"));
 	}
+
+	OnCompanionHelpVisualRequested();
 }
 
 void ANovaClickMovePlayerController::OnCounterSucceeded(ENovaBossCounterType CounterType, ENovaVoiceCommand Command)
@@ -581,12 +625,14 @@ void ANovaClickMovePlayerController::OnCounterSucceeded(ENovaBossCounterType Cou
 			)
 		);
 	}
+
+	OnBossCounterVisualSuccess(CounterType, Command);
 }
 
-void ANovaClickMovePlayerController::OnWeaponKey1() { HandleWeaponSwitchInput(ENovaVoiceCommand::Shield); }
-void ANovaClickMovePlayerController::OnWeaponKey2() { HandleWeaponSwitchInput(ENovaVoiceCommand::Scythe); }
-void ANovaClickMovePlayerController::OnWeaponKey3() { HandleWeaponSwitchInput(ENovaVoiceCommand::Bow); }
-void ANovaClickMovePlayerController::OnWeaponKey4() { HandleWeaponSwitchInput(ENovaVoiceCommand::Hammer); }
+void ANovaClickMovePlayerController::OnWeaponKey1() { HandleWeaponSwitchInput(ENovaVoiceCommand::Sword); }
+void ANovaClickMovePlayerController::OnWeaponKey2() { HandleWeaponSwitchInput(ENovaVoiceCommand::Bow); }
+void ANovaClickMovePlayerController::OnWeaponKey3() { HandleWeaponSwitchInput(ENovaVoiceCommand::Scythe); }
+void ANovaClickMovePlayerController::OnWeaponKey4() { HandleWeaponSwitchInput(ENovaVoiceCommand::Shield); }
 
 void ANovaClickMovePlayerController::OnDebugCounterKeyF5() { OpenBossCounterWindow(ENovaBossCounterType::LaserShield); }
 void ANovaClickMovePlayerController::OnDebugCounterKeyF6() { OpenBossCounterWindow(ENovaBossCounterType::SpaceScythe); }

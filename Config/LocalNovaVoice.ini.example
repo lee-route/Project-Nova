@@ -4,3 +4,5 @@
 AzureSubscriptionKey=YOUR_AZURE_SPEECH_KEY_HERE
 AzureRegion=koreacentral
 AzureLanguage=ko-KR
+; Optional: partial Windows mic name (e.g. Hands-Free). Leave empty for auto-detect/retry.
+CaptureDeviceName=

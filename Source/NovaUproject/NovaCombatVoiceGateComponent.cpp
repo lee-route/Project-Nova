@@ -80,7 +80,7 @@ ENovaVoiceCommand UNovaCombatVoiceGateComponent::GetRequiredCommandForCounter(EN
 	case ENovaBossCounterType::SummonBow:
 		return ENovaVoiceCommand::Bow;
 	case ENovaBossCounterType::DebrisHammer:
-		return ENovaVoiceCommand::Hammer;
+		return ENovaVoiceCommand::Sword;
 	default:
 		return ENovaVoiceCommand::None;
 	}
@@ -91,7 +91,7 @@ bool UNovaCombatVoiceGateComponent::IsWeaponSwitchCommand(ENovaVoiceCommand Comm
 	return Command == ENovaVoiceCommand::Bow
 		|| Command == ENovaVoiceCommand::Shield
 		|| Command == ENovaVoiceCommand::Scythe
-		|| Command == ENovaVoiceCommand::Hammer;
+		|| Command == ENovaVoiceCommand::Sword;
 }
 
 bool UNovaCombatVoiceGateComponent::TryAcceptVoiceCommand(const FNovaVoiceCommandResult& CommandResult, FString& OutRejectReason)
@@ -127,4 +127,33 @@ bool UNovaCombatVoiceGateComponent::TryAcceptVoiceCommand(const FNovaVoiceComman
 
 	OutRejectReason = TEXT("Command not allowed outside counter window");
 	return false;
+}
+
+bool UNovaCombatVoiceGateComponent::TryResolveCounterWindow(const FNovaVoiceCommandResult& CommandResult, FString& OutRejectReason)
+{
+	if (!bCounterWindowOpen)
+	{
+		return true;
+	}
+
+	if (!IsWeaponSwitchCommand(CommandResult.Command))
+	{
+		OutRejectReason = TEXT("Counter window requires a weapon voice command");
+		return false;
+	}
+
+	const ENovaVoiceCommand Required = GetRequiredCommandForCounter(ActiveCounterType);
+	if (CommandResult.Command != Required)
+	{
+		OutRejectReason = FString::Printf(
+			TEXT("Counter window requires command %d, got %d"),
+			static_cast<int32>(Required),
+			static_cast<int32>(CommandResult.Command)
+		);
+		return false;
+	}
+
+	OnCounterSucceeded.Broadcast(ActiveCounterType, CommandResult.Command);
+	CloseCounterWindow();
+	return true;
 }

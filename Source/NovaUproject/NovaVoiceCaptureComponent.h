@@ -33,17 +33,28 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Capture")
 	int32 TargetSampleRate = 16000;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|VAD")
-	float SpeechStartThreshold = 0.015f;
+	/** Partial match against Windows capture device name (e.g. "Hands-Free"). Loaded from LocalNovaVoice.ini if empty. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Capture")
+	FString CaptureDeviceName;
+
+	/** If opening the preferred device fails, try other capture devices (Hands-Free first). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Capture")
+	bool bRetryAllCaptureDevices = true;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Voice|Debug")
+	FString ActiveCaptureDeviceName;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|VAD")
-	float SpeechContinueThreshold = 0.008f;
+	float SpeechStartThreshold = 0.012f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|VAD")
+	float SpeechContinueThreshold = 0.006f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|VAD")
 	float SilenceSecondsToFinalize = 0.45f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|VAD")
-	float MinUtteranceSeconds = 0.25f;
+	float MinUtteranceSeconds = 0.15f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|VAD")
 	float MaxUtteranceSeconds = 2.5f;
@@ -97,7 +108,13 @@ private:
 	double LastRecognitionRequestStartSeconds = 0.0;
 
 	FString ResolveSubscriptionKey() const;
-	void OnAudioCaptured(const float* InAudio, int32 NumFrames, int32 NumChannels, int32 SampleRate, bool bOverflow);
+	bool OpenCaptureWithFallback();
+	bool TryOpenCaptureStream(int32 DeviceIndex, int32 SampleRate, int32 NumChannels, FString& OutOpenedDeviceName);
+	static TArray<Audio::FCaptureDeviceInfo> QueryCaptureDevices();
+	static bool DeviceNameMatchesFilter(const FString& DeviceName, const FString& Filter);
+	static int32 ScoreCaptureDevicePriority(const FString& DeviceName);
+	static FString BuildCaptureDevicesHelpText(const TArray<Audio::FCaptureDeviceInfo>& Devices);
+	void OnAudioCaptured(const void* InAudio, int32 NumFrames, int32 NumChannels, int32 SampleRate, bool bOverflow);
 	void ProcessVad(float DeltaTime);
 	void FinalizeUtterance();
 	void HandleAzureResult(bool bSuccess, const FString& Text, float Confidence);
