@@ -3,8 +3,7 @@
   대상: UE Blueprint / C++ 개발자
   갱신: 2026-06-05
   상세 스펙: GAME-API.json
-  설계·정책: ENGINE-DESIGN.txt
-  진행 현황: PROGRESS.txt
+  설계·진행: ENGINE-DESIGN.txt
 ================================================================================
 
   본 문서는 UE 팀이 npc-test Node API v1에 붙이기 위한 실무 가이드입니다.
@@ -264,8 +263,7 @@
   API-QUICKSTART.md        서버 실행·스모크 (마크다운)
   ue-bridge/INTEGRATION.md 동일 내용 요약 (마크다운)
   GAME-API.json            요청·응답 스키마
-  ENGINE-DESIGN.txt        설계·파이프라인
-  PROGRESS.txt             진행률·로드맵
+  ENGINE-DESIGN.txt        설계·진행·로드맵 (통합)
 
 ================================================================================
   문의 시 엔진 담당에게 전달할 정보:

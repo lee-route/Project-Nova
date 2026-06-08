@@ -92,6 +92,25 @@ function main() {
   assert(flow.ok, "full flow scholar low");
   assert(flow.turnInResult.outcomeBranch.branchId === "black_market_path", "black market full flow");
 
+  runtime.clearQuestFlow(sk + "-fail");
+  game.clearState(sk + "-fail");
+  const badFlow = runtime.runQuestFlow({
+    questId: QUEST_ID,
+    giverId: "guard_timid",
+    scenarioText: "아무거나",
+    engine,
+    parser,
+    sessionKey: sk + "-fail",
+    reputationSessionKey: sk + "-fail",
+  });
+  assert(!badFlow.ok, "garbage report must not complete flow");
+  assert(!badFlow.turnInResult.completion.completed, "garbage report turn-in failed");
+  assert(badFlow.reason, "failure reason present");
+  assert(!badFlow.completionDialogue, "no completion dialogue on failure");
+  const badSnap = game.snapshot(sk + "-fail");
+  assert(badSnap.gold === 0, "no gold on failed turn-in");
+  assert(badSnap.activeQuest && badSnap.activeQuest.state === "turn_in_failed", "active quest failed state");
+
   console.log("quest-flow-test: passed");
 }
 

@@ -107,4 +107,4 @@ npm run api:e2e
 
 - 스펙: `GAME-API.json`
 - UE: `ue-bridge/INTEGRATION.md`
-- 설계: `ENGINE-DESIGN.txt` §9
+- 설계: `ENGINE-DESIGN.txt` §13

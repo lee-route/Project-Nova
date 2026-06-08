@@ -81,6 +81,15 @@
     return state.activeQuest;
   }
 
+  function markTurnInFailed(sessionKey, reason) {
+    var state = getState(sessionKey);
+    if (state.activeQuest) {
+      state.activeQuest.state = "turn_in_failed";
+      state.activeQuest.failReason = reason || "보고 조건 미충족";
+    }
+    return state.activeQuest;
+  }
+
   function snapshot(sessionKey) {
     var s = getState(sessionKey);
     return JSON.parse(JSON.stringify(s));
@@ -105,6 +114,7 @@
     clearState: clearState,
     applyTurnInOutcome: applyTurnInOutcome,
     setActiveQuest: setActiveQuest,
+    markTurnInFailed: markTurnInFailed,
     snapshot: snapshot,
     exportState: exportState,
     importState: importState,

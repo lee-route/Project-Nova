@@ -3,526 +3,133 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Quest Distortion Test</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <title>Project-Nova 퀘스트 엔진 데모</title>
+    <link rel="stylesheet" href="./styles.css?v=20260609" />
   </head>
   <body>
     <main class="container">
-      <h1>퀘스트 정보 왜곡 테스트 인터페이스</h1>
-      <p class="desc">
-        결정론 엔진이 정보를 왜곡/전파하고, LLM은 전달된 JSON만 기반으로 대사를 생성합니다.
-      </p>
-
-      <form id="llm-settings-form" class="panel controls llm-panel">
-        <h2>LLM (결제 후 연결)</h2>
+      <header class="page-header">
+        <h1>Project-Nova 퀘스트 엔진 데모</h1>
         <p class="desc">
-          지금은 <strong>mock</strong>만 사용합니다. API 키 입력 후 Use Live LLM을 켜면 실제 호출합니다.
+          플레이어 한국어 보고 → 결정론 엔진 해석 → 퀘스트 분기·보상
         </p>
-        <div class="grid">
-          <label>
-            Provider
-            <select name="llmProvider">
-              <option value="mock">mock (오프라인)</option>
-              <option value="openai">openai</option>
-              <option value="openai_compatible">openai_compatible (로컬/프록시)</option>
-              <option value="anthropic">anthropic</option>
-            </select>
-          </label>
-          <label>
-            Model
-            <input type="text" name="llmModel" value="gpt-4o-mini" />
-          </label>
-          <label class="full-width">
-            API Key (저장: localStorage)
-            <input type="password" name="llmApiKey" autocomplete="off" placeholder="sk-..." />
-          </label>
-          <label class="full-width">
-            Base URL (선택, openai_compatible / 커스텀)
-            <input type="text" name="llmBaseUrl" placeholder="https://api.openai.com/v1/chat/completions" />
-          </label>
-          <label class="checkbox-label">
-            Use Live LLM
-            <input type="checkbox" name="llmUseLive" />
-          </label>
-        </div>
-        <button type="submit">Save LLM Settings</button>
-        <p id="llm-status" class="desc">provider=mock, live=OFF</p>
-      </form>
-
-      <form id="control-form" class="panel controls">
-        <h2>Scenario Controls</h2>
-        <label>
-          Scenario Text
-          <textarea
-            name="scenarioText"
-            rows="3"
-            placeholder="예: 안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다"
-          >안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다</textarea>
-        </label>
-        <div class="grid">
-          <label>
-            Sender Fear
-            <input type="number" step="0.01" min="0" max="1" name="senderFear" value="0.82" />
-          </label>
-          <label>
-            Sender Hostility
-            <input type="number" step="0.01" min="0" max="1" name="senderHostility" value="0.62" />
-          </label>
-          <label>
-            Sender Trust
-            <input type="number" step="0.01" min="0" max="1" name="senderTrust" value="0.55" />
-          </label>
-          <label>
-            Receiver Credulity
-            <input type="number" step="0.01" min="0" max="1" name="receiverCredulity" value="0.86" />
-          </label>
-          <label>
-            Receiver Trust
-            <input type="number" step="0.01" min="0" max="1" name="receiverTrust" value="0.65" />
-          </label>
-          <label>
-            Relation Trust_Level
-            <input type="number" step="0.01" min="0" max="1" name="trustLevel" value="0.74" />
-          </label>
-          <label class="full-width">
-            Subject Reputation (JSON, fallback)
-            <input
-              type="text"
-              name="subjectReputation"
-              value='{"밀수":0.35,"화물":0.4,"마약초":0.45,"촌장":0.7}'
-            />
-          </label>
-          <label class="full-width">
-            Sender Reputation (JSON)
-            <input
-              type="text"
-              name="senderReputation"
-              value='{"밀수":0.5,"화물":0.55,"마약초":0.6,"촌장":0.85}'
-            />
-          </label>
-          <label class="full-width">
-            Receiver Reputation (JSON)
-            <input
-              type="text"
-              name="receiverReputation"
-              value='{"밀수":0.55,"화물":0.6,"마약초":0.7,"촌장":0.85}'
-            />
-          </label>
-          <label>
-            Quantity Mode
-            <select name="quantityMode">
-              <option value="dramatic">dramatic (증폭)</option>
-              <option value="faithful">faithful (입력 보존)</option>
-            </select>
-          </label>
-          <label class="full-width">
-            퀘스트 의뢰인 전파 프리셋
-            <select name="questPropagationPreset">
-              <option value="">(수동 quantity mode)</option>
-              <option value="guard_timid:dramatic">소심한 경비 — dramatic</option>
-              <option value="merchant_greedy:dramatic">탐욕한 상인 — dramatic</option>
-              <option value="scholar_alric:faithful">학자 알릭 — faithful</option>
-            </select>
-          </label>
-          <label>
-            수신 NPC (보고 대상)
-            <select name="receiverProfileKey">
-              <option value="scholar_alric" selected>학자 알릭</option>
-              <option value="guard_timid">소심한 경비</option>
-              <option value="merchant_greedy">탐욕한 상인</option>
-            </select>
-          </label>
-          <label class="checkbox-label">
-            플레이어 발신 (퀘스트 turn-in과 동일)
-            <input type="checkbox" name="usePlayerAsSender" checked />
-          </label>
-          <label class="checkbox-label">
-            Partial Trust (0.08~0.2 구간 부분 전달)
-            <input type="checkbox" name="allowPartialTrust" checked />
-          </label>
-          <label class="checkbox-label">
-            Persist Session KB (페이지 내 기억 유지)
-            <input type="checkbox" name="persistSession" />
-          </label>
-          <label class="checkbox-label">
-            Run Multi-hop Chain (A→B→A)
-            <input type="checkbox" name="runChain" />
-          </label>
-          <label class="full-width">
-            Ground Truth JSON (optional)
-            <input
-              type="text"
-              name="groundTruthJson"
-              placeholder='[{"subject":"마약초","quantity":12,"is_countable":true}]'
-            />
-          </label>
-          <label>
-            Game Tick (세션)
-            <input type="number" name="gameTick" value="1000" min="0" step="1" />
-          </label>
-          <label>
-            Tick +N after run
-            <input type="number" name="advanceTicksAfterPropagate" value="1" min="0" step="1" />
-          </label>
-          <label class="checkbox-label">
-            WorldTruth 시드 (parser facts)
-            <input type="checkbox" name="seedWorldTruthFromFacts" />
-          </label>
-          <label class="checkbox-label">
-            PlayerKnowledge 기록
-            <input type="checkbox" name="recordPlayerKnowledge" checked />
-          </label>
-        </div>
-        <button
-          type="button"
-          id="run-pipeline"
-          onclick="document.getElementById('click-indicator').textContent='클릭 감지: ' + new Date().toLocaleTimeString();"
-        >
-          Run Pipeline
-        </button>
-        <button type="button" id="run-parser-tests">Run Parser Tests</button>
-        <button type="button" id="run-distortion-tests">Run Distortion Tests</button>
-        <button type="button" id="run-integration-tests">Run Integration Tests</button>
-        <p class="desc">Node 일괄: <code>node run-all-tests.mjs</code></p>
-        <p id="click-indicator">클릭 감지 대기 중...</p>
-      </form>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Parse Pipeline Trace</h2>
-          <button type="button" class="toggle-btn" data-target="out-parse-pipeline">접기</button>
-        </div>
-        <pre id="out-parse-pipeline"></pre>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Facts[] (Parser Output)</h2>
-          <button type="button" class="toggle-btn" data-target="out-facts">접기</button>
-        </div>
-        <pre id="out-facts"></pre>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>출력 텍스트</h2>
-          <button type="button" class="toggle-btn" data-target="out-dialogue-main">접기</button>
-        </div>
-        <textarea id="out-dialogue-main" class="dialogue-output" rows="5" readonly></textarea>
-      </section>
-      
-      <section class="panel">
-        <div class="panel-head">
-          <h2>진단 로그</h2>
-          <button type="button" class="toggle-btn" data-target="debug-log">접기</button>
-        </div>
-        <pre id="debug-log">[init] debug panel ready</pre>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>1) Atomic Raw Info</h2>
-          <button type="button" class="toggle-btn" data-target="out-base">접기</button>
-        </div>
-        <pre id="out-base"></pre>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>2) Distorted_By_Sender</h2>
-          <button type="button" class="toggle-btn" data-target="out-sender">접기</button>
-        </div>
-        <pre id="out-sender"></pre>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>3) Interpreted_By_Receiver</h2>
-          <button type="button" class="toggle-btn" data-target="out-receiver">접기</button>
-        </div>
-        <pre id="out-receiver"></pre>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>4) Receiver Knowledge Base</h2>
-          <button type="button" class="toggle-btn" data-target="out-kb">접기</button>
-        </div>
-        <pre id="out-kb"></pre>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Game Clock + Knowledge Layers</h2>
-          <button type="button" class="toggle-btn" data-target="out-knowledge-layers">접기</button>
-        </div>
-        <pre id="out-knowledge-layers">—</pre>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>5) Engine Data (LLM Grounding)</h2>
-          <button type="button" class="toggle-btn" data-target="out-engine-data">접기</button>
-        </div>
-        <pre id="out-engine-data"></pre>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>6) LLM Expression Layer (Mock)</h2>
-          <button type="button" class="toggle-btn" data-target="out-dialogue">접기</button>
-        </div>
-        <pre id="out-dialogue"></pre>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Audit Diff (Before / After)</h2>
-          <button type="button" class="toggle-btn" data-target="out-audit-diff">접기</button>
-        </div>
-        <pre id="out-audit-diff"></pre>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Ground Truth Compare</h2>
-          <button type="button" class="toggle-btn" data-target="out-ground-truth">접기</button>
-        </div>
-        <pre id="out-ground-truth">ground truth 미입력</pre>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Multi-hop Chain (A→B→A)</h2>
-          <button type="button" class="toggle-btn" data-target="out-chain">접기</button>
-        </div>
-        <pre id="out-chain">다단 전파 비활성</pre>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Distortion Audit Trail</h2>
-          <button type="button" class="toggle-btn" data-target="out-audit">접기</button>
-        </div>
-        <pre id="out-audit"></pre>
-      </section>
-
-      <section class="panel" id="reputation-panel">
-        <h2>평판 (Reputation)</h2>
-        <p class="desc">
-          플레이어↔NPC 평판이 <code>defaultTrustToPlayer</code>에 반영됩니다. 퀘스트 완료 시
-          <code>playerRepDelta</code>가 적용됩니다.
-        </p>
-        <p id="rep-summary" class="desc">—</p>
-        <label class="checkbox-label">
-          세션 유지 (ui-reputation)
-          <input type="checkbox" id="rep-persist-session" checked />
-        </label>
-        <button type="button" id="rep-reset">Reset Reputation</button>
-        <pre id="out-reputation">로딩 중…</pre>
-      </section>
+      </header>
 
       <section class="panel quest-panel">
-        <h2>Quest Playtest (P0)</h2>
-        <p class="desc">
-          의뢰인별 <code>quantityMode</code>·왜곡으로 <strong>interpreted 수량·확신</strong>이 달라지고,
-          <code>outcomes[]</code> 분기(authority / black_market)가 갈릴 수 있습니다.
-          neutral tier 의뢰 대사는 의뢰인마다 다릅니다.
-        </p>
+        <h2>퀘스트 플레이테스트</h2>
+        <p id="load-status" class="status-msg">엔진 로딩 중…</p>
+
         <div class="grid">
           <label class="full-width">
-            Quest
+            퀘스트
             <select id="quest-select"></select>
           </label>
           <label class="full-width">
-            Quest Giver
+            의뢰인 (NPC 성향)
             <select id="quest-giver-select"></select>
           </label>
           <label class="full-width">
-            Final Report (player input)
-            <textarea id="quest-report-text" rows="2">안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다</textarea>
+            조사 보고 (플레이어 입력)
+            <textarea
+              id="quest-report-text"
+              rows="3"
+              placeholder="예: 안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다"
+            ></textarea>
           </label>
         </div>
-        <div class="panel-head">
-          <h3>의뢰 대사 (평판 tier)</h3>
-        </div>
-        <pre id="out-accept-dialogue">의뢰인 선택 시 표시</pre>
-        <button type="button" id="refresh-accept-dialogue">Refresh Accept Dialogue</button>
-        <button type="button" id="run-quest-accept">1. Accept Quest</button>
-        <button type="button" id="run-quest-next-step">2. Next Step</button>
-        <button type="button" id="run-quest-full-flow">Run Full Flow (auto)</button>
-        <button type="button" id="run-quest-process-steps">Run All Steps + Turn-In</button>
-        <button type="button" id="run-quest-turn-in">Turn-In Only</button>
-        <button type="button" id="run-quest-compare">Compare All Givers</button>
-        <button type="button" id="run-quest-reset">Reset Quest Session</button>
-        <div class="panel-head">
-          <h3>Quest Flow Log</h3>
-          <button type="button" class="toggle-btn" data-target="out-quest-flow">접기</button>
-        </div>
-        <pre id="out-quest-flow">수락·스텝 진행 로그</pre>
-        <div class="panel-head">
-          <h3>Game State (local)</h3>
-          <button type="button" class="toggle-btn" data-target="out-game-state">접기</button>
-        </div>
-        <pre id="out-game-state">gold / worldFlags / history</pre>
-        <div class="panel-head">
-          <h3>Process Steps</h3>
-          <button type="button" class="toggle-btn" data-target="out-quest-steps">접기</button>
-        </div>
-        <pre id="out-quest-steps">미실행</pre>
-        <div class="panel-head">
-          <h3>Quest Result</h3>
-          <button type="button" class="toggle-btn" data-target="out-quest">접기</button>
-        </div>
-        <pre id="out-quest">퀘스트 미실행</pre>
-        <div class="panel-head">
-          <h3>Path Compare</h3>
-          <button type="button" class="toggle-btn" data-target="out-quest-compare">접기</button>
-        </div>
-        <pre id="out-quest-compare">비교 미실행</pre>
-      </section>
 
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Integration E2E Results</h2>
-          <button type="button" class="toggle-btn" data-target="out-integration-tests">접기</button>
+        <div class="accept-block">
+          <h3>의뢰 대사</h3>
+          <p id="out-accept-line" class="accept-line">의뢰인을 선택하세요.</p>
         </div>
-        <pre id="out-integration-tests">테스트 실행 전</pre>
-      </section>
 
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Distortion Regression Results</h2>
-          <button type="button" class="toggle-btn" data-target="out-distortion-tests">접기</button>
+        <div class="btn-row">
+          <button type="button" id="run-quest-full-flow" class="btn-primary">퀘스트 실행</button>
+          <button type="button" id="run-quest-compare" class="btn-secondary">의뢰인 비교</button>
+          <button type="button" id="run-quest-reset" class="btn-secondary">초기화</button>
         </div>
-        <pre id="out-distortion-tests">테스트 실행 전</pre>
-      </section>
 
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Parser Regression Results</h2>
-          <button type="button" class="toggle-btn" data-target="out-test-results">접기</button>
+        <p id="quest-phase" class="quest-phase">대기 중</p>
+
+        <div id="completion-banner" class="completion-banner" hidden>
+          <strong>퀘스트 완료</strong>
+          <p id="out-completion-line" class="completion-line"></p>
         </div>
-        <pre id="out-test-results">테스트 실행 전</pre>
+
+        <div id="failure-banner" class="failure-banner" hidden>
+          <strong>보고 실패 — 퀘스트 미완료</strong>
+          <p id="out-failure-line" class="failure-line"></p>
+        </div>
+
+        <div class="output-block" id="steps-block" hidden>
+          <h3>진행 단계</h3>
+          <ol id="out-quest-steps" class="step-list"></ol>
+        </div>
+
+        <div id="result-summary" class="result-summary" hidden>
+          <div class="result-card">
+            <span class="result-label">분기</span>
+            <span id="summary-branch" class="result-value">—</span>
+          </div>
+          <div class="result-card">
+            <span class="result-label">골드</span>
+            <span id="summary-gold" class="result-value">—</span>
+          </div>
+          <div class="result-card">
+            <span class="result-label">화물 행선</span>
+            <span id="summary-destination" class="result-value">—</span>
+          </div>
+          <div class="result-card">
+            <span class="result-label">해석 수량</span>
+            <span id="summary-quantity" class="result-value">—</span>
+          </div>
+        </div>
+
+        <div class="output-block">
+          <h3>게임 상태</h3>
+          <pre id="out-game-state">gold / worldFlags / history</pre>
+        </div>
+
+        <div class="output-block">
+          <h3>퀘스트 결과 (상세)</h3>
+          <pre id="out-quest">퀘스트 실행 전</pre>
+        </div>
+
+        <div class="output-block">
+          <h3>의뢰인별 비교</h3>
+          <pre id="out-quest-compare">「의뢰인 비교」 버튼을 누르세요.</pre>
+        </div>
       </section>
     </main>
+
+    <pre id="debug-log" class="sr-only" aria-hidden="true">[init]</pre>
+
     <script>
       window.__NPC_DEBUG = [];
       window.__appendInlineDebug = function (message) {
         var box = document.getElementById("debug-log");
-        if (!box) return;
-        box.textContent += "\n[inline] " + message;
+        if (box) box.textContent += "\n[inline] " + message;
       };
-      window.__appendInlineDebug("bootstrap script loaded");
       window.addEventListener("error", function (event) {
         window.__NPC_DEBUG.push("[window.error] " + (event.message || "unknown error"));
         window.__appendInlineDebug("window.error: " + (event.message || "unknown error"));
       });
     </script>
-    <script
-      src="./game-clock.js"
-      onload="window.__appendInlineDebug('game-clock.js loaded')"
-      onerror="window.__appendInlineDebug('game-clock.js load failed')"
-    ></script>
-    <script
-      src="./knowledge-layers.js"
-      onload="window.__appendInlineDebug('knowledge-layers.js loaded')"
-      onerror="window.__appendInlineDebug('knowledge-layers.js load failed')"
-    ></script>
-    <script
-      src="./llm-fact-anchor.js"
-      onload="window.__appendInlineDebug('llm-fact-anchor.js loaded')"
-      onerror="window.__appendInlineDebug('llm-fact-anchor.js load failed')"
-    ></script>
-    <script
-      src="./llm-mock-fallback.js"
-      onload="window.__appendInlineDebug('llm-mock-fallback.js loaded')"
-      onerror="window.__appendInlineDebug('llm-mock-fallback.js load failed')"
-    ></script>
-    <script
-      src="./llm-adapter.js"
-      onload="window.__appendInlineDebug('llm-adapter.js loaded')"
-      onerror="window.__appendInlineDebug('llm-adapter.js load failed')"
-    ></script>
-    <script
-      src="./quest-system.js"
-      onload="window.__appendInlineDebug('quest-system.js loaded')"
-      onerror="window.__appendInlineDebug('quest-system.js load failed')"
-    ></script>
-    <script
-      src="./reputation-system.js"
-      onload="window.__appendInlineDebug('reputation-system.js loaded')"
-      onerror="window.__appendInlineDebug('reputation-system.js load failed')"
-    ></script>
-    <script
-      src="./llm-settings.js"
-      onload="window.__appendInlineDebug('llm-settings.js loaded')"
-      onerror="window.__appendInlineDebug('llm-settings.js load failed')"
-    ></script>
-    <script
-      src="./data-loader.js"
-      onload="window.__appendInlineDebug('data-loader.js loaded')"
-      onerror="window.__appendInlineDebug('data-loader.js load failed')"
-    ></script>
-    <script
-      src="./dictionaries.js"
-      onload="window.__appendInlineDebug('dictionaries.js loaded')"
-      onerror="window.__appendInlineDebug('dictionaries.js load failed')"
-    ></script>
-    <script
-      src="./npc-parser.js"
-      onload="window.__appendInlineDebug('npc-parser.js loaded')"
-      onerror="window.__appendInlineDebug('npc-parser.js load failed')"
-    ></script>
-    <script
-      src="./app.js"
-      onload="window.__appendInlineDebug('app.js loaded')"
-      onerror="window.__appendInlineDebug('app.js load failed')"
-    ></script>
-    <script
-      src="./parser-runner.js"
-      onload="window.__appendInlineDebug('parser-runner.js loaded')"
-      onerror="window.__appendInlineDebug('parser-runner.js load failed')"
-    ></script>
-    <script
-      src="./distortion-runner.js"
-      onload="window.__appendInlineDebug('distortion-runner.js loaded')"
-      onerror="window.__appendInlineDebug('distortion-runner.js load failed')"
-    ></script>
-    <script
-      src="./integration-runner.js"
-      onload="window.__appendInlineDebug('integration-runner.js loaded')"
-      onerror="window.__appendInlineDebug('integration-runner.js load failed')"
-    ></script>
-    <script
-      src="./deception-audit.js"
-      onload="window.__appendInlineDebug('deception-audit.js loaded')"
-      onerror="window.__appendInlineDebug('deception-audit.js load failed')"
-    ></script>
-    <script
-      src="./session-snapshot.js"
-      onload="window.__appendInlineDebug('session-snapshot.js loaded')"
-      onerror="window.__appendInlineDebug('session-snapshot.js load failed')"
-    ></script>
-    <script
-      src="./quest-runtime.js"
-      onload="window.__appendInlineDebug('quest-runtime.js loaded')"
-      onerror="window.__appendInlineDebug('quest-runtime.js load failed')"
-    ></script>
-    <script
-      src="./quest-game-state.js"
-      onload="window.__appendInlineDebug('quest-game-state.js loaded')"
-      onerror="window.__appendInlineDebug('quest-game-state.js load failed')"
-    ></script>
-    <script
-      src="./reputation-runner.js"
-      onload="window.__appendInlineDebug('reputation-runner.js loaded')"
-      onerror="window.__appendInlineDebug('reputation-runner.js load failed')"
-    ></script>
-    <script
-      src="./quest-runner.js"
-      onload="window.__appendInlineDebug('quest-runner.js loaded')"
-      onerror="window.__appendInlineDebug('quest-runner.js load failed')"
-    ></script>
+    <script src="./game-clock.js"></script>
+    <script src="./knowledge-layers.js"></script>
+    <script src="./llm-fact-anchor.js"></script>
+    <script src="./llm-mock-fallback.js"></script>
+    <script src="./llm-adapter.js"></script>
+    <script src="./quest-system.js"></script>
+    <script src="./reputation-system.js"></script>
+    <script src="./llm-settings.js"></script>
+    <script src="./data-loader.js"></script>
+    <script src="./dictionaries.js"></script>
+    <script src="./npc-parser.js"></script>
+    <script src="./deception-audit.js"></script>
+    <script src="./session-snapshot.js"></script>
+    <script src="./quest-runtime.js"></script>
+    <script src="./quest-game-state.js"></script>
+    <script src="./quest-runner.js?v=20260611"></script>
   </body>
 </html>
