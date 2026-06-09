@@ -22,6 +22,7 @@
 #include "Blueprint/UserWidget.h"
 #include "UObject/UObjectGlobals.h"
 #include "CollisionQueryParams.h"
+#include "Components/CapsuleComponent.h"
 #include "Engine/OverlapResult.h"
 #include "NavigationSystem.h"
 #include "NavigationPath.h"
@@ -240,6 +241,8 @@ void ANovaClickMovePlayerController::ApplyMovementRotationSettings(APawn* InPawn
 		Move->MaxStepHeight = MaxStepHeight;
 		Move->SetWalkableFloorAngle(MaxWalkableFloorAngle);
 		Move->bCanWalkOffLedges = true;
+		Move->bMaintainHorizontalGroundVelocity = true;
+		Move->PerchAdditionalHeight = PerchAdditionalHeight;
 	}
 
 	ControlledCharacter->bUseControllerRotationYaw = false;
@@ -306,6 +309,13 @@ void ANovaClickMovePlayerController::PlayerTick(float DeltaTime)
 	ApplyCameraYaw(DeltaTime);
 	ApplyFixedOrbitCamera();
 
+	GroundStabilizeAccumulator += DeltaTime;
+	if (GroundStabilizeAccumulator >= 0.05f)
+	{
+		GroundStabilizeAccumulator = 0.0f;
+		StabilizeCharacterOnGround();
+	}
+
 	// 우클릭 홀드: 커서 아래 목적지 갱신
 	if (ControlMode == ENovaControlMode::ClickMove && bIsHoldingMove && !IsDialogueActive())
 	{
@@ -352,9 +362,21 @@ void ANovaClickMovePlayerController::PlayerTick(float DeltaTime)
 		return;
 	}
 
-	To.Z = 0.f;
-	const FVector Dir = To.GetSafeNormal();
-	P->AddMovementInput(Dir, 1.0f);
+	FVector MoveDir = To;
+	if (!bDestinationRequiresDirectMove)
+	{
+		MoveDir.Z = 0.0f;
+	}
+	else if (FMath::Abs(MoveDir.Z) > MaxStepHeight)
+	{
+		MoveDir.Z = FMath::Sign(MoveDir.Z) * MaxStepHeight;
+	}
+
+	const FVector Dir = MoveDir.GetSafeNormal();
+	if (!Dir.IsNearlyZero())
+	{
+		P->AddMovementInput(Dir, 1.0f);
+	}
 
 	if (VoiceCaptureComponent && GEngine)
 	{
@@ -882,12 +904,13 @@ void ANovaClickMovePlayerController::ApplyFixedOrbitCamera()
 	{
 		if (USkeletalMeshComponent* SkMesh = C->GetMesh())
 		{
-			if (bUseMedievalKnightVisual)
+			const bool bPlayingSkillMontage = SkMesh->GetAnimInstance() && SkMesh->GetAnimInstance()->IsAnyMontagePlaying();
+			if (bUseMedievalKnightVisual && !bPlayingSkillMontage)
 			{
-				SkMesh->SetRelativeLocation(KnightMeshRelativeLocation);
+				UpdateKnightMeshFootAlignment(C, SkMesh);
 				SkMesh->SetRelativeRotation(KnightMeshRelativeRotation);
 			}
-			else
+			else if (!bUseMedievalKnightVisual)
 			{
 				FRotator MeshRel = SkMesh->GetRelativeRotation();
 				if (!FMath::IsNearlyZero(MeshRel.Yaw))
@@ -1063,7 +1086,125 @@ void ANovaClickMovePlayerController::OnDashPressed()
 	}
 
 	const FVector LaunchVel = Dir * DashStrength + FVector(0.f, 0.f, DashUpwardStrength);
-	C->LaunchCharacter(LaunchVel, /*bXYOverride*/ true, /*bZOverride*/ true);
+	C->LaunchCharacter(LaunchVel, /*bXYOverride*/ true, /*bZOverride*/ DashUpwardStrength > 0.0f);
+	SchedulePostActionGroundStabilization(0.22f);
+}
+
+void ANovaClickMovePlayerController::StabilizeCharacterOnGround()
+{
+	ACharacter* PlayerCharacter = Cast<ACharacter>(GetPawn());
+	UWorld* World = GetWorld();
+	if (!PlayerCharacter || !World)
+	{
+		return;
+	}
+
+	UCharacterMovementComponent* Movement = PlayerCharacter->GetCharacterMovement();
+	const UCapsuleComponent* Capsule = PlayerCharacter->GetCapsuleComponent();
+	if (!Movement || !Capsule || Movement->MovementMode != MOVE_Walking)
+	{
+		return;
+	}
+
+	if (Movement->Velocity.SizeSquared2D() > FMath::Square(2200.0f))
+	{
+		return;
+	}
+
+	const FVector ActorLocation = PlayerCharacter->GetActorLocation();
+	const float CapsuleHalfHeight = Capsule->GetScaledCapsuleHalfHeight();
+	float DesiredZ = ActorLocation.Z;
+
+	if (Movement->CurrentFloor.IsWalkableFloor())
+	{
+		DesiredZ = Movement->CurrentFloor.HitResult.ImpactPoint.Z + CapsuleHalfHeight;
+	}
+	else
+	{
+		const FVector TraceStart = ActorLocation + FVector(0.0f, 0.0f, 20.0f);
+		const FVector TraceEnd = ActorLocation - FVector(0.0f, 0.0f, CapsuleHalfHeight + 140.0f);
+
+		FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(NovaGroundStabilize), false, PlayerCharacter);
+		FHitResult Hit;
+		if (!World->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_WorldStatic, QueryParams))
+		{
+			return;
+		}
+
+		if (!IsWalkableSurfaceHit(Hit, WalkableMinNormalZ))
+		{
+			return;
+		}
+
+		const FString HitActorName = Hit.GetActor() ? Hit.GetActor()->GetName() : FString();
+		if (HitActorName.Contains(TEXT("grate"), ESearchCase::IgnoreCase)
+			|| HitActorName.Contains(TEXT("Grate"), ESearchCase::IgnoreCase))
+		{
+			return;
+		}
+
+		DesiredZ = Hit.ImpactPoint.Z + CapsuleHalfHeight;
+	}
+	const float DeltaZ = DesiredZ - ActorLocation.Z;
+	if (FMath::Abs(DeltaZ) < 0.35f || FMath::Abs(DeltaZ) > GroundSnapMaxCorrection)
+	{
+		return;
+	}
+
+	FVector CorrectedLocation = ActorLocation;
+	CorrectedLocation.Z = DesiredZ;
+	PlayerCharacter->SetActorLocation(CorrectedLocation, false, nullptr, ETeleportType::TeleportPhysics);
+}
+
+void ANovaClickMovePlayerController::UpdateKnightMeshFootAlignment(
+	ACharacter* PlayerCharacter,
+	USkeletalMeshComponent* SkMesh)
+{
+	if (!PlayerCharacter || !SkMesh)
+	{
+		return;
+	}
+
+	FVector MeshLocation = KnightMeshRelativeLocation;
+	const UCapsuleComponent* Capsule = PlayerCharacter->GetCapsuleComponent();
+	const UCharacterMovementComponent* Movement = PlayerCharacter->GetCharacterMovement();
+	if (!Capsule || !Movement)
+	{
+		SkMesh->SetRelativeLocation(MeshLocation);
+		return;
+	}
+
+	if (Movement->IsMovingOnGround() && Movement->CurrentFloor.IsWalkableFloor())
+	{
+		const FHitResult& FloorHit = Movement->CurrentFloor.HitResult;
+		const float CapsuleBottom = PlayerCharacter->GetActorLocation().Z - Capsule->GetScaledCapsuleHalfHeight();
+		const float FloorGap = CapsuleBottom - FloorHit.ImpactPoint.Z;
+		MeshLocation.Z = KnightMeshRelativeLocation.Z - FloorGap;
+
+		if (FloorHit.Normal.Z < 0.95f)
+		{
+			MeshLocation.Z += KnightStairMeshLift;
+		}
+	}
+
+	SkMesh->SetRelativeLocation(MeshLocation);
+}
+
+void ANovaClickMovePlayerController::SchedulePostActionGroundStabilization(const float DelaySeconds)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return;
+	}
+
+	World->GetTimerManager().ClearTimer(GroundStabilizeTimerHandle);
+	World->GetTimerManager().SetTimer(
+		GroundStabilizeTimerHandle,
+		this,
+		&ANovaClickMovePlayerController::StabilizeCharacterOnGround,
+		FMath::Max(DelaySeconds, 0.05f),
+		false);
 }
 
 static USpringArmComponent* FindSpringArmOnPawn(APawn* P)
@@ -1234,14 +1375,17 @@ void ANovaClickMovePlayerController::ApplyWeaponVisualToPawn(ENovaVoiceCommand W
 	}
 }
 
-bool ANovaClickMovePlayerController::OpenBossCounterWindow(ENovaBossCounterType CounterType, AActor* BossSource)
+bool ANovaClickMovePlayerController::OpenBossCounterWindow(
+	ENovaBossCounterType CounterType,
+	AActor* BossSource,
+	const float CounterWindowSeconds)
 {
 	if (!CombatVoiceGateComponent)
 	{
 		return false;
 	}
 
-	return CombatVoiceGateComponent->OpenCounterWindow(CounterType, BossSource);
+	return CombatVoiceGateComponent->OpenCounterWindow(CounterType, BossSource, CounterWindowSeconds);
 }
 
 bool ANovaClickMovePlayerController::TryOpenDebugCounterWindow(ENovaBossCounterType CounterType)
@@ -1386,24 +1530,28 @@ void ANovaClickMovePlayerController::OnSkillQ()
 {
 	if (IsDialogueActive()) { return; }
 	BP_UseSkillQ(EquippedSecondaryWeapon);
+	SchedulePostActionGroundStabilization();
 }
 
 void ANovaClickMovePlayerController::OnSkillW()
 {
 	if (IsDialogueActive()) { return; }
 	BP_UseSkillW(EquippedSecondaryWeapon);
+	SchedulePostActionGroundStabilization();
 }
 
 void ANovaClickMovePlayerController::OnSkillE()
 {
 	if (IsDialogueActive()) { return; }
 	BP_UseSkillE(EquippedSecondaryWeapon);
+	SchedulePostActionGroundStabilization();
 }
 
 void ANovaClickMovePlayerController::OnSkillR()
 {
 	if (IsDialogueActive()) { return; }
 	BP_UseSkillR(EquippedSecondaryWeapon);
+	SchedulePostActionGroundStabilization();
 }
 
 bool ANovaClickMovePlayerController::IsFirstPersonDungeonPawn() const

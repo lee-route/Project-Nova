@@ -25,6 +25,8 @@ void UNovaParagonGruxBossComponent::BeginPlay()
 		Owner->Tags.AddUnique(ParagonGruxBossTag);
 	}
 
+	ApplyBossScale();
+
 	if (bValidateParagonGruxMesh)
 	{
 		FString RejectReason;
@@ -38,6 +40,23 @@ void UNovaParagonGruxBossComponent::BeginPlay()
 	{
 		OnGruxCounterSucceeded.AddDynamic(this, &UNovaParagonGruxBossComponent::HandleDefaultCounterReaction);
 	}
+}
+
+void UNovaParagonGruxBossComponent::ApplyBossScale()
+{
+	if (!bApplyBossScaleOnBeginPlay)
+	{
+		return;
+	}
+
+	AActor* Owner = GetOwner();
+	if (!Owner || BossUniformScale <= 0.0f)
+	{
+		return;
+	}
+
+	const FVector CurrentScale = Owner->GetActorScale3D();
+	Owner->SetActorScale3D(CurrentScale * BossUniformScale);
 }
 
 void UNovaParagonGruxBossComponent::ApplyCounterStaggerReaction(const float StaggerSeconds)
@@ -328,7 +347,9 @@ ANovaClickMovePlayerController* UNovaParagonGruxBossComponent::ResolveNovaPlayer
 	return nullptr;
 }
 
-bool UNovaParagonGruxBossComponent::RequestCounterWindow(const ENovaBossCounterType CounterType)
+bool UNovaParagonGruxBossComponent::RequestCounterWindow(
+	const ENovaBossCounterType CounterType,
+	const float CounterWindowSeconds)
 {
 	ANovaClickMovePlayerController* NovaPC = ResolveNovaPlayerController();
 	if (!NovaPC)
@@ -336,7 +357,7 @@ bool UNovaParagonGruxBossComponent::RequestCounterWindow(const ENovaBossCounterT
 		return false;
 	}
 
-	return NovaPC->OpenBossCounterWindow(CounterType, GetOwner());
+	return NovaPC->OpenBossCounterWindow(CounterType, GetOwner(), CounterWindowSeconds);
 }
 
 void UNovaParagonGruxBossComponent::NotifyGruxCounterSucceeded(

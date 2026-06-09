@@ -44,6 +44,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nova|Boss|Grux")
 	float MaxCounterDistance = 4500.0f;
 
+	/** BeginPlay에서 보스 액터 스케일을 조정합니다 (기본 0.5 = 절반 크기) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nova|Boss|Grux|Scale")
+	bool bApplyBossScaleOnBeginPlay = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nova|Boss|Grux|Scale", meta = (ClampMin = "0.1", ClampMax = "3.0"))
+	float BossUniformScale = 0.5f;
+
 	/** BeginPlay에서 ParagonGrux 메시 사용 여부를 검사합니다. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Nova|Boss|Grux")
 	bool bValidateParagonGruxMesh = true;
@@ -67,7 +74,7 @@ public:
 	bool bIsGroggy = false;
 
 	UFUNCTION(BlueprintCallable, Category = "Nova|Boss|Grux")
-	bool RequestCounterWindow(ENovaBossCounterType CounterType);
+	bool RequestCounterWindow(ENovaBossCounterType CounterType, float CounterWindowSeconds = -1.0f);
 
 	/** 상쇄 성공 후 그로기 진입: 이동·패턴 정지, 피격 추가 대미지 */
 	UFUNCTION(BlueprintCallable, Category = "Nova|Boss|Grux|Groggy")
@@ -116,6 +123,7 @@ private:
 
 	void RestoreMovementAfterStagger();
 	void HandleGroggyTimerExpired();
+	void ApplyBossScale();
 
 	bool ValidateGruxAssetOnOwner(FString& OutRejectReason) const;
 	ANovaClickMovePlayerController* ResolveNovaPlayerController() const;

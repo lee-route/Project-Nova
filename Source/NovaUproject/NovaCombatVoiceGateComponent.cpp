@@ -95,7 +95,7 @@ bool UNovaCombatVoiceGateComponent::OpenCounterWindow(
 	{
 		GEngine->AddOnScreenDebugMessage(
 			-1,
-			CounterWindowSeconds,
+			RemainingWindowSeconds,
 			FColor::Yellow,
 			FString::Printf(
 				TEXT("상쇄 창: %s - %s (%.1f초)"),

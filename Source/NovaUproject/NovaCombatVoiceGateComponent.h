@@ -22,7 +22,8 @@ public:
 	FNovaCounterWindowOpenedDelegate OnCounterWindowOpened;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Combat")
-	float CounterWindowSeconds = 1.2f;
+	/** 패턴 전조 시간과 맞춤 (기본 5초 — 음성 무기 전환·상쇄용) */
+	float CounterWindowSeconds = 5.0f;
 
 	/** Grux 보스와 이 거리 안에서만 상쇄 창 유지 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Combat")

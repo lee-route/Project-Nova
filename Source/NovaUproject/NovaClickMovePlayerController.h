@@ -36,7 +36,10 @@ public:
 
 	/** Paragon Grux 보스만 CounterType 상쇄 창을 열 수 있습니다. */
 	UFUNCTION(BlueprintCallable, Category = "Voice|Combat")
-	bool OpenBossCounterWindow(ENovaBossCounterType CounterType, AActor* BossSource);
+	bool OpenBossCounterWindow(
+		ENovaBossCounterType CounterType,
+		AActor* BossSource,
+		float CounterWindowSeconds = -1.0f);
 
 	UFUNCTION(BlueprintCallable, Category = "Voice")
 	UNovaVoiceCaptureComponent* GetVoiceCaptureComponent() const { return VoiceCaptureComponent; }
@@ -118,6 +121,9 @@ private:
 	void OnDashPressed();
 	void OnJumpPressed();
 	void PerformMeleeAttack();
+	void StabilizeCharacterOnGround();
+	void SchedulePostActionGroundStabilization(float DelaySeconds = 0.18f);
+	void UpdateKnightMeshFootAlignment(ACharacter* PlayerCharacter, USkeletalMeshComponent* SkMesh);
 
 	void OnSkillQ();
 	void OnSkillW();
@@ -161,10 +167,17 @@ private:
 
 	/** 계단·경사면 오르기 (캐릭터 이동) */
 	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
-	float MaxStepHeight = 60.0f;
+	float MaxStepHeight = 75.0f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
 	float MaxWalkableFloorAngle = 52.0f;
+
+	/** 걸을 때 캡슐-바닥 Z 오차를 보정 (계단 한 칸 높이 맞춤) */
+	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
+	float GroundSnapMaxCorrection = 42.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
+	float PerchAdditionalHeight = 50.0f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
 	bool bUseNavMeshPathfinding = true;
@@ -188,7 +201,11 @@ private:
 	bool bUseMedievalKnightVisual = true;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Character|Knight")
-	FVector KnightMeshRelativeLocation = FVector(0.f, 0.f, -88.f);
+	FVector KnightMeshRelativeLocation = FVector(0.f, 0.f, -82.f);
+
+	/** 계단·경사에서 메시를 살짝 올려 다리 클리핑 방지 */
+	UPROPERTY(EditDefaultsOnly, Category = "Character|Knight")
+	float KnightStairMeshLift = 16.0f;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Character|Knight")
 	FRotator KnightMeshRelativeRotation = FRotator(0.f, -90.f, 0.f);
@@ -230,6 +247,9 @@ private:
 	float MeleeAttackCooldown = 0.45f;
 
 	float LastMeleeAttackTime = -1000.0f;
+
+	float GroundStabilizeAccumulator = 0.0f;
+	FTimerHandle GroundStabilizeTimerHandle;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Voice", meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<UNovaVoiceCaptureComponent> VoiceCaptureComponent;
