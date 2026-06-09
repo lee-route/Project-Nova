@@ -50,7 +50,9 @@ function assert(cond, msg) {
 }
 
 const health = await call("GET", "/health");
-assert(health.json.ok && health.json.llmEnabled === false, "health v1 no llm");
+assert(health.json.ok, "health ok");
+assert(Array.isArray(health.json.v1Endpoints), "health endpoints");
+assert(typeof health.json.llmEnabled === "boolean", "health llmEnabled flag");
 
 const meta = await call("GET", "/v1/quest/meta");
 assert(meta.json.ok && meta.json.givers.length >= 3, "quest meta");
@@ -81,6 +83,16 @@ assert(bad.json.ok === false && bad.json.error.code, "error shape");
 
 const snap = await call("GET", "/v1/session/snapshot?sessionKey=api-test-session");
 assert(snap.json.ok && snap.json.snapshot.authoritativeSave === "unreal_engine", "session snapshot");
+
+const dialogue = await call("POST", "/v1/dialogue", {
+  scenarioText: "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+  receiverProfileKey: "scholar_alric",
+});
+assert(dialogue.json.ok && dialogue.json.npcSpeech, "dialogue mock npcSpeech");
+assert(dialogue.json.questJudgmentExcluded === true, "dialogue excludes quest judgment");
+
+const llmStatus = await call("GET", "/v1/llm/status");
+assert(llmStatus.json.ok && typeof llmStatus.json.llmEnabled === "boolean", "llm status");
 
 console.log(failed ? "FAILED" : "api-server-test passed");
 process.exit(failed ? 1 : 0);

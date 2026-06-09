@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import vm from "vm";
 import { fileURLToPath } from "url";
+import { loadLlmServerConfig, llmConfigSummary } from "./llm-server-config.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,6 +16,9 @@ export function createApiRuntime(rootDir) {
     document: { querySelector: () => null, querySelectorAll: () => [], getElementById: () => null },
     console,
     localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+    fetch: globalThis.fetch,
+    setTimeout: globalThis.setTimeout.bind(globalThis),
+    clearTimeout: globalThis.clearTimeout.bind(globalThis),
   };
   sandbox.window = sandbox;
   const ctx = vm.createContext(sandbox);
@@ -30,10 +34,16 @@ export function createApiRuntime(rootDir) {
     "npc-parser.js",
     "quest-system.js",
     "quest-runtime.js",
+    "llm-fact-anchor.js",
+    "llm-mock-fallback.js",
+    "llm-adapter.js",
   ];
   for (const f of scripts) {
     vm.runInContext(read(f), ctx, { filename: f });
   }
+
+  const llmCfg = loadLlmServerConfig(root);
+  sandbox.window.LlmAdapter.configure(llmCfg);
 
   const npcs = JSON.parse(read("npcs.json"));
   const player = JSON.parse(read("player-profile.json"));
@@ -56,5 +66,7 @@ export function createApiRuntime(rootDir) {
     PlayerKnowledge: sandbox.window.PlayerKnowledge,
     DeceptionAudit: sandbox.window.DeceptionAudit,
     SessionSnapshot: sandbox.window.SessionSnapshot,
+    LlmAdapter: sandbox.window.LlmAdapter,
+    llmConfig: llmConfigSummary(llmCfg),
   };
 }

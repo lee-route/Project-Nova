@@ -207,4 +207,6 @@ git push origin main
 | `NovaVoiceCommandParser.*` | 명령 파싱 |
 | `Config/DefaultNovaVoice.ini` | 기본 음성 설정 |
 
-**NPC·퀘스트 API 프로토타입:** `models/npc-test/` (별도 문서)
+**NPC·퀘스트 API 프로토타입:** `models/npc-test/`
+- 퀘스트 흐름·UE 연출: [`models/npc-test/QUEST-FLOW-GUIDE.txt`](models/npc-test/QUEST-FLOW-GUIDE.txt)
+- HTTP turn-in 연동: [`models/npc-test/INTEGRATION-GUIDE.txt`](models/npc-test/INTEGRATION-GUIDE.txt)
