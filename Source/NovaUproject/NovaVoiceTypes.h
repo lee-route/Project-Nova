@@ -9,7 +9,7 @@ enum class ENovaVoiceCommand : uint8
 	None UMETA(DisplayName = "None"),
 	Bow UMETA(DisplayName = "Bow"),
 	Shield UMETA(DisplayName = "Shield"),
-	Scythe UMETA(DisplayName = "Scythe"),
+	Spear UMETA(DisplayName = "Spear"),
 	Hammer UMETA(DisplayName = "Sword"),
 	Help UMETA(DisplayName = "Help"),
 	Cancel UMETA(DisplayName = "Cancel")
@@ -19,10 +19,14 @@ UENUM(BlueprintType)
 enum class ENovaBossCounterType : uint8
 {
 	None UMETA(DisplayName = "None"),
-	LaserShield UMETA(DisplayName = "Laser Shield"),
-	SpaceScythe UMETA(DisplayName = "Space Scythe"),
-	SummonBow UMETA(DisplayName = "Summon Bow"),
-	DebrisHammer UMETA(DisplayName = "Debris Hammer")
+	/** 돌진(Pattern_1) → 방패 */
+	Pattern_1 UMETA(DisplayName = "Pattern 1 - Dash"),
+	/** 범위공격(Pattern_2) → 창 */
+	Pattern_2 UMETA(DisplayName = "Pattern 2 - Area Attack"),
+	/** 투사체(Pattern_3) → 활 */
+	Pattern_3 UMETA(DisplayName = "Pattern 3 - Projectile"),
+	/** 패턴_@ 미정(Pattern_4) → 검 */
+	Pattern_4 UMETA(DisplayName = "Pattern 4 - TBD")
 };
 
 USTRUCT(BlueprintType)

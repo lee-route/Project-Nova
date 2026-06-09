@@ -34,8 +34,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Combat|Weapon")
 	bool SwitchSecondaryWeapon(ENovaVoiceCommand WeaponCommand);
 
+	/** Paragon Grux 보스만 CounterType 상쇄 창을 열 수 있습니다. */
 	UFUNCTION(BlueprintCallable, Category = "Voice|Combat")
-	void OpenBossCounterWindow(ENovaBossCounterType CounterType);
+	bool OpenBossCounterWindow(ENovaBossCounterType CounterType, AActor* BossSource);
 
 	UFUNCTION(BlueprintCallable, Category = "Voice")
 	UNovaVoiceCaptureComponent* GetVoiceCaptureComponent() const { return VoiceCaptureComponent; }
@@ -47,6 +48,10 @@ public:
 	/** BP: 보스 상쇄 성공 연출 (C++는 판정만 처리) */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Voice|Visual")
 	void OnBossCounterVisualSuccess(ENovaBossCounterType CounterType, ENovaVoiceCommand WeaponUsed);
+
+	/** BP: 보스 패턴 인식 후 상쇄 창 UI (연출·표시) */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Voice|Combat")
+	void OnBossCounterWindowOpened(ENovaBossCounterType CounterType, ENovaVoiceCommand RequiredWeapon);
 
 	/** BP: "도와줘" 연출 */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Voice|Visual")
@@ -178,6 +183,15 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "Camera")
 	float CharacterFacingYawOffset = -90.0f;
 
+	UPROPERTY(EditDefaultsOnly, Category = "Character|Knight")
+	bool bUseMedievalKnightVisual = true;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Character|Knight")
+	FVector KnightMeshRelativeLocation = FVector(0.f, 0.f, -88.f);
+
+	UPROPERTY(EditDefaultsOnly, Category = "Character|Knight")
+	FRotator KnightMeshRelativeRotation = FRotator(0.f, -90.f, 0.f);
+
 	UPROPERTY(EditDefaultsOnly, Category = "Nova|Dialogue")
 	float NpcInteractRadius = 350.0f;
 
@@ -217,8 +231,11 @@ private:
 
 	UFUNCTION()
 	void OnCounterSucceeded(ENovaBossCounterType CounterType, ENovaVoiceCommand Command);
+	void OnCounterWindowOpened(ENovaBossCounterType CounterType);
+	void NotifyCounterAfterWeaponSwitch(ENovaVoiceCommand WeaponCommand);
 
 	void ApplyWeaponVisualToPawn(ENovaVoiceCommand WeaponCommand);
+	void ApplyMedievalKnightVisual(APawn* InPawn);
 
 	void TurnCamera(float AxisValue);
 	void ApplyCameraYaw(float DeltaTime);
@@ -252,4 +269,5 @@ private:
 	void OnDebugCounterKeyF6();
 	void OnDebugCounterKeyF7();
 	void OnDebugCounterKeyF8();
+	bool TryOpenDebugCounterWindow(ENovaBossCounterType CounterType);
 };

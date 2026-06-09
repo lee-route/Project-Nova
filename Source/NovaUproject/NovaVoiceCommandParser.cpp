@@ -68,7 +68,9 @@ FNovaVoiceCommandResult UNovaVoiceCommandParser::Parse(const FString& Recognized
 	{
 		Result.Command = ENovaVoiceCommand::Cancel;
 	}
-	else if (ContainsAnyKeyword(Normalized, {TEXT("도와"), TEXT("help"), TEXT("헬프")}))
+	else if (ContainsAnyKeyword(
+		Normalized,
+		{TEXT("도와"), TEXT("도움"), TEXT("help"), TEXT("헬프"), TEXT("헬"), TEXT("도와줘"), TEXT("도와죠"), TEXT("도와주")}))
 	{
 		Result.Command = ENovaVoiceCommand::Help;
 	}
@@ -88,6 +90,12 @@ FNovaVoiceCommandResult UNovaVoiceCommandParser::Parse(const FString& Recognized
 		{
 			HangulOnly = FNovaVoiceWeaponLexicon::ExtractHangul(RecognizedText);
 		}
+	}
+
+	if (IsWeaponCommand(Result.Command))
+	{
+		Result.bAccepted = true;
+		return Result;
 	}
 
 	const float RequiredConfidence = FNovaVoiceWeaponLexicon::GetMinConfidenceFor(

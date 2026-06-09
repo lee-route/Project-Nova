@@ -10,7 +10,7 @@ public:
 	static FString NormalizeRecognizedText(const FString& InText);
 	static ENovaVoiceCommand MatchDirectHangul(const FString& HangulOnly);
 	static ENovaVoiceCommand DetectFromRecognizedText(const FString& RecognizedText);
-	static bool IsScytheHangul(const FString& HangulOnly);
+	static bool IsSpearHangul(const FString& HangulOnly);
 	static bool IsSwordHangul(const FString& HangulOnly);
 	static bool IsWeaponCommand(ENovaVoiceCommand Command);
 	static float GetMinConfidenceFor(

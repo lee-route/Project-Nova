@@ -13,9 +13,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Parser")
 	float MinConfidence = 0.40f;
 
-	/** Short weapon words (낫/활 등) often come back with low Azure confidence. */
+	/** 짧은 무기 단어(창/활 등)는 Azure confidence가 낮게 나오는 경우가 많음. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Voice|Parser")
-	float MinWeaponConfidence = 0.05f;
+	float MinWeaponConfidence = 0.0f;
 
 	UFUNCTION(BlueprintCallable, Category = "Voice|Parser")
 	FNovaVoiceCommandResult Parse(const FString& RecognizedText, float Confidence) const;

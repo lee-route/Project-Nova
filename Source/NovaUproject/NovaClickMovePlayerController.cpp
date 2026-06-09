@@ -3,6 +3,7 @@
 #include "NovaClickMovePlayerController.h"
 
 #include "NovaCombatVoiceGateComponent.h"
+#include "NovaParagonGruxBossComponent.h"
 #include "NovaSecondaryWeaponVisualComponent.h"
 #include "NovaVoiceCaptureComponent.h"
 #include "InputCoreTypes.h"
@@ -24,6 +25,9 @@
 #include "Engine/OverlapResult.h"
 #include "NavigationSystem.h"
 #include "NavigationPath.h"
+#include "Animation/AnimInstance.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "UObject/SoftObjectPath.h"
 
 ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 {
@@ -52,6 +56,7 @@ ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 	if (CombatVoiceGateComponent)
 	{
 		CombatVoiceGateComponent->OnCounterSucceeded.AddDynamic(this, &ANovaClickMovePlayerController::OnCounterSucceeded);
+		CombatVoiceGateComponent->OnCounterWindowOpened.AddDynamic(this, &ANovaClickMovePlayerController::OnCounterWindowOpened);
 	}
 }
 
@@ -63,7 +68,7 @@ namespace NovaVoiceDebug
 		{
 		case ENovaVoiceCommand::Bow: return TEXT("활");
 		case ENovaVoiceCommand::Shield: return TEXT("방패");
-		case ENovaVoiceCommand::Scythe: return TEXT("낫");
+		case ENovaVoiceCommand::Spear: return TEXT("창");
 		case ENovaVoiceCommand::Hammer: return TEXT("검");
 		case ENovaVoiceCommand::Help: return TEXT("도와줘");
 		case ENovaVoiceCommand::Cancel: return TEXT("취소");
@@ -153,6 +158,24 @@ void ANovaClickMovePlayerController::OnPossess(APawn* InPawn)
 	{
 		InPawn->DisableInput(this);
 		ApplyMovementRotationSettings(InPawn);
+		ApplyMedievalKnightVisual(InPawn);
+
+		if (bUseMedievalKnightVisual && InPawn->GetWorld())
+		{
+			TWeakObjectPtr<APawn> WeakPawn(InPawn);
+			FTimerHandle KnightVisualTimer;
+			InPawn->GetWorld()->GetTimerManager().SetTimer(
+				KnightVisualTimer,
+				[this, WeakPawn]()
+				{
+					if (WeakPawn.IsValid())
+					{
+						ApplyMedievalKnightVisual(WeakPawn.Get());
+					}
+				},
+				0.15f,
+				false);
+		}
 	}
 
 	FRotator ControlRot = GetControlRotation();
@@ -859,11 +882,19 @@ void ANovaClickMovePlayerController::ApplyFixedOrbitCamera()
 	{
 		if (USkeletalMeshComponent* SkMesh = C->GetMesh())
 		{
-			FRotator MeshRel = SkMesh->GetRelativeRotation();
-			if (!FMath::IsNearlyZero(MeshRel.Yaw))
+			if (bUseMedievalKnightVisual)
 			{
-				MeshRel.Yaw = 0.f;
-				SkMesh->SetRelativeRotation(MeshRel);
+				SkMesh->SetRelativeLocation(KnightMeshRelativeLocation);
+				SkMesh->SetRelativeRotation(KnightMeshRelativeRotation);
+			}
+			else
+			{
+				FRotator MeshRel = SkMesh->GetRelativeRotation();
+				if (!FMath::IsNearlyZero(MeshRel.Yaw))
+				{
+					MeshRel.Yaw = 0.f;
+					SkMesh->SetRelativeRotation(MeshRel);
+				}
 			}
 		}
 	}
@@ -1002,7 +1033,7 @@ bool ANovaClickMovePlayerController::SwitchSecondaryWeapon(ENovaVoiceCommand Wea
 {
 	if (WeaponCommand != ENovaVoiceCommand::Bow
 		&& WeaponCommand != ENovaVoiceCommand::Shield
-		&& WeaponCommand != ENovaVoiceCommand::Scythe
+		&& WeaponCommand != ENovaVoiceCommand::Spear
 		&& WeaponCommand != ENovaVoiceCommand::Hammer)
 	{
 		return false;
@@ -1022,7 +1053,91 @@ bool ANovaClickMovePlayerController::SwitchSecondaryWeapon(ENovaVoiceCommand Wea
 	}
 
 	OnSecondaryWeaponChanged(WeaponCommand);
+	NotifyCounterAfterWeaponSwitch(WeaponCommand);
 	return true;
+}
+
+void ANovaClickMovePlayerController::ApplyMedievalKnightVisual(APawn* InPawn)
+{
+	if (!bUseMedievalKnightVisual || !InPawn)
+	{
+		return;
+	}
+
+	ACharacter* ControlledCharacter = Cast<ACharacter>(InPawn);
+	if (!ControlledCharacter)
+	{
+		return;
+	}
+
+	static const FSoftObjectPath KnightMeshPath(TEXT("/Game/MedievalKnightAssets/Meshes/SKM_MKnight.SKM_MKnight"));
+	static const FSoftObjectPath KnightAnimPath(TEXT("/Game/MedievalKnightAssets/Animation/ABP_MKnight.ABP_MKnight_C"));
+
+	USkeletalMesh* KnightMesh = Cast<USkeletalMesh>(KnightMeshPath.TryLoad());
+	UClass* KnightAnimClass = Cast<UClass>(KnightAnimPath.TryLoad());
+
+	if (!KnightMesh)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Nova: SKM_MKnight load failed at %s"), *KnightMeshPath.ToString());
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Red, TEXT("Knight mesh load failed — check Content/MedievalKnightAssets"));
+		}
+		return;
+	}
+
+	if (!KnightAnimClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Nova: ABP_MKnight load failed at %s"), *KnightAnimPath.ToString());
+	}
+
+	TArray<USkeletalMeshComponent*> SkMeshes;
+	ControlledCharacter->GetComponents<USkeletalMeshComponent>(SkMeshes);
+	if (USkeletalMeshComponent* PrimaryMesh = ControlledCharacter->GetMesh())
+	{
+		SkMeshes.AddUnique(PrimaryMesh);
+	}
+
+	int32 AppliedCount = 0;
+	for (USkeletalMeshComponent* SkMesh : SkMeshes)
+	{
+		if (!SkMesh)
+		{
+			continue;
+		}
+
+		SkMesh->SetSkeletalMesh(KnightMesh);
+		SkMesh->SetRelativeLocation(KnightMeshRelativeLocation);
+		SkMesh->SetRelativeRotation(KnightMeshRelativeRotation);
+
+		if (KnightAnimClass)
+		{
+			SkMesh->SetAnimInstanceClass(KnightAnimClass);
+		}
+
+		SkMesh->InitAnim(true);
+		SkMesh->MarkRenderStateDirty();
+		SkMesh->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+		++AppliedCount;
+
+		UE_LOG(
+			LogTemp,
+			Display,
+			TEXT("Nova: Knight visual on %s.%s (mesh=%s anim=%s)"),
+			*ControlledCharacter->GetName(),
+			*SkMesh->GetName(),
+			*KnightMesh->GetName(),
+			KnightAnimClass ? *KnightAnimClass->GetName() : TEXT("none"));
+	}
+
+	if (AppliedCount > 0 && GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(
+			-1,
+			5.f,
+			FColor::Green,
+			FString::Printf(TEXT("Knight applied: SKM_MKnight (%d mesh component(s))"), AppliedCount));
+	}
 }
 
 void ANovaClickMovePlayerController::ApplyWeaponVisualToPawn(ENovaVoiceCommand WeaponCommand)
@@ -1051,12 +1166,43 @@ void ANovaClickMovePlayerController::ApplyWeaponVisualToPawn(ENovaVoiceCommand W
 	}
 }
 
-void ANovaClickMovePlayerController::OpenBossCounterWindow(ENovaBossCounterType CounterType)
+bool ANovaClickMovePlayerController::OpenBossCounterWindow(ENovaBossCounterType CounterType, AActor* BossSource)
 {
-	if (CombatVoiceGateComponent)
+	if (!CombatVoiceGateComponent)
 	{
-		CombatVoiceGateComponent->OpenCounterWindow(CounterType);
+		return false;
 	}
+
+	return CombatVoiceGateComponent->OpenCounterWindow(CounterType, BossSource);
+}
+
+bool ANovaClickMovePlayerController::TryOpenDebugCounterWindow(ENovaBossCounterType CounterType)
+{
+	const APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn || !CombatVoiceGateComponent)
+	{
+		return false;
+	}
+
+	AActor* GruxBoss = UNovaParagonGruxBossComponent::FindNearestParagonGruxBoss(
+		GetWorld(),
+		ControlledPawn->GetActorLocation(),
+		CombatVoiceGateComponent->MaxCounterBossDistance);
+
+	if (!GruxBoss)
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(
+				-1,
+				2.0f,
+				FColor::Orange,
+				TEXT("상쇄 테스트: Paragon Grux 보스가 근처에 없습니다"));
+		}
+		return false;
+	}
+
+	return OpenBossCounterWindow(CounterType, GruxBoss);
 }
 
 void ANovaClickMovePlayerController::OnVoiceCommandRecognized(const FNovaVoiceCommandResult& CommandResult)
@@ -1070,7 +1216,7 @@ void ANovaClickMovePlayerController::OnVoiceCommandRecognized(const FNovaVoiceCo
 	{
 	case ENovaVoiceCommand::Bow:
 	case ENovaVoiceCommand::Shield:
-	case ENovaVoiceCommand::Scythe:
+	case ENovaVoiceCommand::Spear:
 	case ENovaVoiceCommand::Hammer:
 		HandleWeaponSwitchInput(CommandResult.Command);
 		break;
@@ -1115,6 +1261,29 @@ void ANovaClickMovePlayerController::RequestCompanionHelp()
 	OnCompanionHelpVisualRequested();
 }
 
+void ANovaClickMovePlayerController::OnCounterWindowOpened(ENovaBossCounterType CounterType)
+{
+	const ENovaVoiceCommand RequiredWeapon = UNovaCombatVoiceGateComponent::GetRequiredWeaponForPattern(CounterType);
+	OnBossCounterWindowOpened(CounterType, RequiredWeapon);
+}
+
+void ANovaClickMovePlayerController::NotifyCounterAfterWeaponSwitch(ENovaVoiceCommand WeaponCommand)
+{
+	if (!CombatVoiceGateComponent)
+	{
+		return;
+	}
+
+	FString RejectReason;
+	if (!CombatVoiceGateComponent->TryCounterWithEquippedWeapon(WeaponCommand, RejectReason))
+	{
+		if (GEngine && !RejectReason.IsEmpty())
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange, RejectReason);
+		}
+	}
+}
+
 void ANovaClickMovePlayerController::OnCounterSucceeded(ENovaBossCounterType CounterType, ENovaVoiceCommand Command)
 {
 	if (GEngine)
@@ -1124,9 +1293,9 @@ void ANovaClickMovePlayerController::OnCounterSucceeded(ENovaBossCounterType Cou
 			2.0f,
 			FColor::Emerald,
 			FString::Printf(
-				TEXT("Boss counter success: pattern=%d weapon=%s"),
-				static_cast<int32>(CounterType),
-				*NovaVoiceDebug::CommandToDisplayName(Command)
+				TEXT("상쇄 성공: %s - %s"),
+				*UNovaCombatVoiceGateComponent::GetPatternFullLabel(CounterType),
+				*UNovaCombatVoiceGateComponent::GetRequiredWeaponCounterLabel(CounterType)
 			)
 		);
 	}
@@ -1136,13 +1305,13 @@ void ANovaClickMovePlayerController::OnCounterSucceeded(ENovaBossCounterType Cou
 
 void ANovaClickMovePlayerController::OnWeaponKey1() { HandleWeaponSwitchInput(ENovaVoiceCommand::Hammer); }
 void ANovaClickMovePlayerController::OnWeaponKey2() { HandleWeaponSwitchInput(ENovaVoiceCommand::Bow); }
-void ANovaClickMovePlayerController::OnWeaponKey3() { HandleWeaponSwitchInput(ENovaVoiceCommand::Scythe); }
+void ANovaClickMovePlayerController::OnWeaponKey3() { HandleWeaponSwitchInput(ENovaVoiceCommand::Spear); }
 void ANovaClickMovePlayerController::OnWeaponKey4() { HandleWeaponSwitchInput(ENovaVoiceCommand::Shield); }
 
-void ANovaClickMovePlayerController::OnDebugCounterKeyF5() { OpenBossCounterWindow(ENovaBossCounterType::LaserShield); }
-void ANovaClickMovePlayerController::OnDebugCounterKeyF6() { OpenBossCounterWindow(ENovaBossCounterType::SpaceScythe); }
-void ANovaClickMovePlayerController::OnDebugCounterKeyF7() { OpenBossCounterWindow(ENovaBossCounterType::SummonBow); }
-void ANovaClickMovePlayerController::OnDebugCounterKeyF8() { OpenBossCounterWindow(ENovaBossCounterType::DebrisHammer); }
+void ANovaClickMovePlayerController::OnDebugCounterKeyF5() { TryOpenDebugCounterWindow(ENovaBossCounterType::Pattern_1); }
+void ANovaClickMovePlayerController::OnDebugCounterKeyF6() { TryOpenDebugCounterWindow(ENovaBossCounterType::Pattern_2); }
+void ANovaClickMovePlayerController::OnDebugCounterKeyF7() { TryOpenDebugCounterWindow(ENovaBossCounterType::Pattern_3); }
+void ANovaClickMovePlayerController::OnDebugCounterKeyF8() { TryOpenDebugCounterWindow(ENovaBossCounterType::Pattern_4); }
 
 
 void ANovaClickMovePlayerController::OnSkillQ()
