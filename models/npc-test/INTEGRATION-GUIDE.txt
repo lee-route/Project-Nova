@@ -61,8 +61,11 @@
     POST /v1/parse                   파서 디버그
 
   v1에 없음 (404)
-    POST /v1/dialogue          LLM 대사 (v2)
     POST /v1/quest/flow        전체 processSteps HTTP (v2)
+
+  LLM (v1)
+    turn-in 응답 dialogue.npcSpeech  ← UE 기본 (한 HTTP)
+    POST /v1/dialogue                ← 단독 테스트용
 
   travel / interact / 맵 이동 / 3D 대사 / 시네마 → UE 책임
 

@@ -124,3 +124,40 @@ export async function handleDialogueRequest(runtime, body) {
     questJudgmentExcluded: true,
   };
 }
+
+/** Turn-in 완료 응답에 붙일 LLM 대사 (판정·보상과 분리). */
+export async function dialogueFromTurnIn(runtime, turnIn) {
+  if (!turnIn || !turnIn.completion || !turnIn.completion.completed) {
+    return null;
+  }
+  if (turnIn.propagation && turnIn.propagation.blocked) {
+    return null;
+  }
+  var interpreted = (turnIn.propagation && turnIn.propagation.interpretedFacts) || [];
+  if (!interpreted.length) {
+    return null;
+  }
+  var npcProfileKey = turnIn.turnInProfileKey || "scholar_alric";
+  var result = await handleDialogueRequest(runtime, {
+    interpretedFacts: interpreted,
+    npcProfileKey: npcProfileKey,
+  });
+  if (!result.ok) {
+    return {
+      ok: false,
+      npcProfileKey: npcProfileKey,
+      error: result.error,
+      questJudgmentExcluded: true,
+    };
+  }
+  return {
+    ok: true,
+    npcProfileKey: npcProfileKey,
+    npcSpeech: result.npcSpeech,
+    provider: result.provider,
+    persona: result.persona,
+    anchorValidation: result.anchorValidation,
+    fallbackStyle: result.fallbackStyle || null,
+    questJudgmentExcluded: true,
+  };
+}

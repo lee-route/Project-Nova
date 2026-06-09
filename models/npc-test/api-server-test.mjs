@@ -76,7 +76,28 @@ assert(turnIn.json.outcome && turnIn.json.outcome.rewards, "turn-in outcome");
 assert(turnIn.json.propagation && !turnIn.json.propagation.blocked, "propagation ok");
 assert(turnIn.json.knowledgeAudit && turnIn.json.knowledgeAudit.v1Policy === "diagnostic_only", "knowledge audit");
 assert(turnIn.json.gameState && turnIn.json.gameState.gold >= 0, "game state applied");
-assert(turnIn.json.llmExcluded === true, "llm excluded flag");
+assert(turnIn.json.llmExcluded === false, "dialogue included by default on completion");
+assert(turnIn.json.dialogue && turnIn.json.dialogue.ok && turnIn.json.dialogue.npcSpeech, "turn-in dialogue npcSpeech");
+assert(turnIn.json.dialogue.provider, "turn-in dialogue provider");
+
+const turnInNoLlm = await call("POST", "/v1/quest/turn-in", {
+  questId: "quest_abandoned_cargo",
+  giverId: "guard_timid",
+  scenarioText: "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
+  sessionKey: "api-test-no-llm",
+  includeDialogue: false,
+});
+assert(turnInNoLlm.json.ok && turnInNoLlm.json.llmExcluded === true, "includeDialogue false skips llm");
+assert(turnInNoLlm.json.dialogue == null, "no dialogue object when skipped");
+
+const turnInFail = await call("POST", "/v1/quest/turn-in", {
+  questId: "quest_abandoned_cargo",
+  giverId: "guard_timid",
+  scenarioText: "12개 확인함",
+  sessionKey: "api-test-fail",
+});
+assert(turnInFail.json.ok && turnInFail.json.completion.completed === false, "failed turn-in");
+assert(turnInFail.json.dialogue == null, "no dialogue on failed turn-in");
 
 const bad = await call("POST", "/v1/quest/turn-in", { questId: "quest_abandoned_cargo" });
 assert(bad.json.ok === false && bad.json.error.code, "error shape");

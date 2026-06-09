@@ -14,7 +14,7 @@
   "v1Policy": {
     "outcomeSource": "interpretedFacts_only",
     "knowledgeLayers": "diagnostic_only",
-    "llm": "excluded",
+    "llm": "turn_in_dialogue_optional_includeDialogue_false_to_skip",
     "travelInteract": "unreal_engine_local",
     "processStepsFullFlow": "not_exposed_in_v1"
   },
@@ -66,11 +66,20 @@
         "persistSession": "boolean (optional, engine KB)",
         "worldTruthFacts": "FactInput[] (optional, investigation seed)",
         "applyGameState": "boolean (default true, server RAM demo)",
-        "includeKnowledgeAudit": "boolean (default true)"
+        "includeKnowledgeAudit": "boolean (default true)",
+        "includeDialogue": "boolean (default true when completion.completed; false skips LLM)"
       },
       "out": {
         "ok": true,
-        "llmExcluded": true,
+        "turnInProfileKey": "string (report receiver NPC, usually scholar_alric)",
+        "llmExcluded": "boolean (false when dialogue.ok)",
+        "dialogue": {
+          "ok": "boolean",
+          "npcProfileKey": "string",
+          "npcSpeech": "string",
+          "provider": "openai|mock|mock_fallback",
+          "questJudgmentExcluded": true
+        },
         "v1OutcomeSource": "interpretedFacts_only",
         "facts": "FactInput[]",
         "propagation": {
@@ -113,9 +122,12 @@
     }
   },
   "deferredV2": [
-    "POST /v1/dialogue (LLM)",
     "POST /v1/quest/flow (full processSteps)",
     "deception affects outcome / reputation penalty"
+  ],
+  "v1LlmEndpoints": [
+    "POST /v1/dialogue (standalone test)",
+    "turn-in dialogue field (UE default path)"
   ],
   "schemas": {
     "FactInput": {

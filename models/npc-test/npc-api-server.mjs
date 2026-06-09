@@ -6,7 +6,7 @@
  */
 import http from "http";
 import { createApiRuntime } from "./api-bootstrap.mjs";
-import { handleDialogueRequest } from "./dialogue-api.mjs";
+import { dialogueFromTurnIn, handleDialogueRequest } from "./dialogue-api.mjs";
 
 const rt = createApiRuntime();
 
@@ -17,12 +17,14 @@ export function apiError(code, message, details) {
   };
 }
 
-export function slimTurnInResponse(turnIn) {
+export function slimTurnInResponse(turnIn, dialogue) {
   if (!turnIn) return null;
+  var hasDialogue = Boolean(dialogue && dialogue.ok && dialogue.npcSpeech);
   return {
     ok: true,
     questId: turnIn.questId,
     giverId: turnIn.giverId,
+    turnInProfileKey: turnIn.turnInProfileKey,
     sessionKey: turnIn.sessionKey,
     facts: turnIn.facts,
     propagation: turnIn.propagation,
@@ -38,8 +40,14 @@ export function slimTurnInResponse(turnIn) {
     knowledgeAudit: turnIn.knowledgeAudit,
     gameState: turnIn.gameStateApply && turnIn.gameStateApply.state,
     v1OutcomeSource: turnIn.v1OutcomeSource,
-    llmExcluded: true,
+    llmExcluded: !hasDialogue,
+    dialogue: dialogue,
   };
+}
+
+export function shouldIncludeDialogue(body, turnIn) {
+  if (body.includeDialogue === false) return false;
+  return Boolean(turnIn && turnIn.completion && turnIn.completion.completed);
 }
 
 export async function handleApiRequest(req, res, runtime) {
@@ -139,7 +147,11 @@ export async function handleApiRequest(req, res, runtime) {
         applyGameState: body.applyGameState !== false,
         includeKnowledgeAudit: body.includeKnowledgeAudit !== false,
       });
-      const payload = slimTurnInResponse(turnIn);
+      var dialogue = null;
+      if (shouldIncludeDialogue(body, turnIn)) {
+        dialogue = await dialogueFromTurnIn(R, turnIn);
+      }
+      const payload = slimTurnInResponse(turnIn, dialogue);
       sendJson(res, 200, payload);
     } catch (e) {
       sendJson(res, 400, apiError("turn_in_failed", String(e.message || e)));

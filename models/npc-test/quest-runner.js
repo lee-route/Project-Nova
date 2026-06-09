@@ -263,7 +263,7 @@
     refreshGiverOptions();
     refreshGameStatePanel();
     clearCompletionUi();
-    setStatus("준비 완료. 「퀘스트 실행」 = 수락 → 조사 → 보고 → 완료");
+    setStatus("준비 완료. 「퀘스트 실행」 = 수락 → 조사 → 보고 → 완료 (판정·골드 테스트, LLM은 API/UE)");
   }
 
   function turnInCompleted(turnIn) {
@@ -334,7 +334,8 @@
         "퀘스트 완료 — " +
           (branch || "분기 없음") +
           ", 골드 +" +
-          (gold != null ? gold : 0)
+          (gold != null ? gold : 0) +
+          " (LLM 대사는 API turn-in → dialogue 필드, UE-LLM-GUIDE.txt 참고)"
       );
     } catch (err) {
       outQuest.textContent = "오류: " + (err.message || String(err));
