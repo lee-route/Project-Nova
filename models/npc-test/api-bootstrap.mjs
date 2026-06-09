@@ -33,6 +33,7 @@ export function createApiRuntime(rootDir) {
     "dictionaries.js",
     "npc-parser.js",
     "quest-system.js",
+    "quest-presentation.js",
     "quest-runtime.js",
     "llm-fact-anchor.js",
     "llm-mock-fallback.js",

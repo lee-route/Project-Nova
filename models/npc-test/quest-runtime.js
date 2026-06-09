@@ -406,12 +406,22 @@
     };
   }
 
+  function enrichAcceptWithPresentation(accept, quest, giver) {
+    var briefing = getGiverBriefing(giver, quest);
+    var out = Object.assign({}, accept, { briefing: briefing });
+    if (global.QuestPresentation && global.QuestPresentation.buildGiverAcceptPresentation) {
+      out.giverPresentation = global.QuestPresentation.buildGiverAcceptPresentation(quest, giver);
+    }
+    return out;
+  }
+
   function getAcceptDialogue(questId, giverId, options) {
     var quest = getQuest(questId);
     if (!quest) throw new Error("Quest not found: " + questId);
     var giver = getQuestGiver(quest, giverId);
     if (!giver) throw new Error("Quest giver not found: " + giverId);
-    return resolveAcceptDialogue(giver, quest, options);
+    var accept = resolveAcceptDialogue(giver, quest, options);
+    return enrichAcceptWithPresentation(accept, quest, giver);
   }
 
   function createQuestInstance(questId, giverId) {

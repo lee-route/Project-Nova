@@ -192,9 +192,10 @@ button {
 
 .completion-line {
   margin: 0;
-  font-size: 18px;
-  line-height: 1.6;
+  font-size: 16px;
+  line-height: 1.75;
   color: #f0f4ff;
+  white-space: pre-wrap;
 }
 
 .failure-banner {

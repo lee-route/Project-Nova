@@ -7,6 +7,7 @@
 import http from "http";
 import { createApiRuntime } from "./api-bootstrap.mjs";
 import { dialogueFromTurnIn, handleDialogueRequest } from "./dialogue-api.mjs";
+import { buildReportPresentation, finalizePresentation } from "./quest-presentation.mjs";
 
 const rt = createApiRuntime();
 
@@ -17,15 +18,23 @@ export function apiError(code, message, details) {
   };
 }
 
-export function slimTurnInResponse(turnIn, dialogue) {
+export function slimTurnInResponse(turnIn, dialogue, scenarioText) {
   if (!turnIn) return null;
   var hasDialogue = Boolean(dialogue && dialogue.ok && dialogue.npcSpeech);
+  var reportPresentation =
+    turnIn.completion && turnIn.completion.completed
+      ? dialogue && dialogue.reportPresentation
+        ? dialogue.reportPresentation
+        : finalizePresentation(buildReportPresentation(turnIn, scenarioText))
+      : null;
   return {
     ok: true,
     questId: turnIn.questId,
     giverId: turnIn.giverId,
     turnInProfileKey: turnIn.turnInProfileKey,
     sessionKey: turnIn.sessionKey,
+    scenarioText: scenarioText != null ? String(scenarioText) : "",
+    reportPresentation: reportPresentation,
     facts: turnIn.facts,
     propagation: turnIn.propagation,
     completion: turnIn.completion,
@@ -149,9 +158,9 @@ export async function handleApiRequest(req, res, runtime) {
       });
       var dialogue = null;
       if (shouldIncludeDialogue(body, turnIn)) {
-        dialogue = await dialogueFromTurnIn(R, turnIn);
+        dialogue = await dialogueFromTurnIn(R, turnIn, scenarioText);
       }
-      const payload = slimTurnInResponse(turnIn, dialogue);
+      const payload = slimTurnInResponse(turnIn, dialogue, scenarioText);
       sendJson(res, 200, payload);
     } catch (e) {
       sendJson(res, 400, apiError("turn_in_failed", String(e.message || e)));

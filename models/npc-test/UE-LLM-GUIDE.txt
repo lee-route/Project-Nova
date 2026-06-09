@@ -1,130 +1,108 @@
 ================================================================================
-  Project-Nova — UE LLM 연동 1페이지 (UE-LLM-GUIDE)
-  대상: UE Blueprint / C++ 개발자
-  갱신: 2026-06-13
+  Project-Nova — UE 연동 1페이지 (UE-LLM-GUIDE)
+  대상: UE Blueprint / C++ · WBP_Dialogue
+  갱신: 2026-06-14
 ================================================================================
 
 ■ 한 줄 요약
 --------------------------------------------------------------------------------
-  퀘스트 보고는 POST /v1/quest/turn-in 한 번만 호출하면 됩니다.
-  completion.completed == true 이면 응답 dialogue.npcSpeech 에 알릭 LLM 대사가
-  이미 들어 있습니다. UE는 그 문자열을 대화 UI에 띄우면 끝.
+  의뢰: GET accept-dialogue → giverPresentation (의뢰인 지레짐작 수량)
+  보고: POST turn-in → reportBeats (플레이어 → 알릭 지레짐작 → 결과)
+  UE는 beats 순서대로 TextBlock에 SetText.
 
 
 ■ 0. 사전 준비
 --------------------------------------------------------------------------------
-  (1) Node API 서버 실행 (개발 PC)
-
-      cd models\npc-test
-      node npc-api-server.mjs
-
-  (2) LLM live (선택 — OpenAI 비용 발생)
-
-      copy llm-config.example.json llm-config.local.json
-      → apiKey, useLive: true 설정 후 서버 재시작
-
-      live 없으면 provider: mock (무료, 테스트용 고정 톤 대사)
-
-  (3) 확인
-
-      GET http://127.0.0.1:8787/health        → llmEnabled
-      GET http://127.0.0.1:8787/v1/llm/status
+  cd models\npc-test
+  node npc-api-server.mjs
+  GET http://127.0.0.1:8787/health → ok: true
 
 
-■ 1. UE Blueprint 흐름 (권장)
+■ 1. 연출 타임라인 (순서 엄수)
 --------------------------------------------------------------------------------
 
-  [1] 퀘스트 수락 (UE 로컬 또는 GET accept-dialogue)
-  [2] 플레이어 조사 · 맵 연출 (UE)
-  [3] 보고 UI → scenarioText 수집
-  [4] HTTP POST /v1/quest/turn-in  ← ★ 여기 한 번만
-  [5] JSON 파싱 → 아래 분기
+  [① 의뢰 NPC]  GET /v1/quest/accept-dialogue?giverId=guard_timid
+      accept.line                          짧은 수락 대사
+      accept.giverPresentation.presumedLine   ★ "15개 될 거야" (경비/상인)
+      accept.giverPresentation.presumedQuantity
+      accept.giverPresentation.acceptBeats[0]  phase: giver_presume
 
-      completion.completed == false
-        → 실패 UI, 골드·완료 대사 금지
+  [② 조사]      UE 맵 (API 없음)
 
-      completion.completed == true
-        → outcome.rewards.gold, outcome.worldFlags 저장 (UE SaveGame)
-        → dialogue.npcSpeech 를 알릭 대화창/자막에 표시
+  [③ 알릭 보고]  입력 UI → scenarioText
+      POST /v1/quest/turn-in
+
+  [④ beats]     reportPresentation.reportBeats 순서대로:
+
+      order 1  player_report    [플레이어] 마약초 열두 개…
+      order 2  alric_presume    ★ [학자 알릭] …15개군…  (보고 직후!)
+      order 3  distortion_hint  (선택) 12 ↔ 15 작은 UI
+      order 4  alric_dialogue   LLM/mock 대사
+      order 5  giver_echo       의뢰 회수
+      order 6  outcome          화물 행선
+
+  [⑤ 게임]      completion.completed → gold / SaveGame
 
 
-■ 2. Turn-in 요청 JSON
+■ 2. Accept 요청 (의뢰)
 --------------------------------------------------------------------------------
+  GET http://127.0.0.1:8787/v1/quest/accept-dialogue?giverId=guard_timid&sessionKey=ue-1
 
-  URL:    POST http://127.0.0.1:8787/v1/quest/turn-in
-  Header: Content-Type: application/json; charset=utf-8
+  PowerShell:
+  $a = Invoke-RestMethod "http://127.0.0.1:8787/v1/quest/accept-dialogue?giverId=guard_timid"
+  $a.accept.giverPresentation.presumedLine
+  $a.accept.giverPresentation.presumedQuantity   # 경비 15, 알릭 12
+
+
+■ 3. Turn-in 요청 (보고)
+--------------------------------------------------------------------------------
+  POST http://127.0.0.1:8787/v1/quest/turn-in
 
   {
     "questId": "quest_abandoned_cargo",
     "giverId": "guard_timid",
     "scenarioText": "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
-    "sessionKey": "ue-player-save-slot-1"
+    "sessionKey": "ue-1"
   }
 
-  · giverId = 의뢰인 (guard_timid | merchant_greedy | scholar_alric)
-  · 보고 수신 NPC는 서버가 turnInProfileKey 로 처리 (보통 scholar_alric)
-  · includeDialogue: false 를 넣으면 LLM 생략 (판정만 빠르게 테스트할 때)
+  PowerShell:
+  $r = Invoke-RestMethod -Uri "http://127.0.0.1:8787/v1/quest/turn-in" -Method POST `
+    -Body (@{ questId="quest_abandoned_cargo"; giverId="guard_timid";
+      scenarioText="안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다";
+      sessionKey="ue-1" } | ConvertTo-Json -Compress) `
+    -ContentType "application/json; charset=utf-8"
+
+  $r.reportPresentation.reportBeats[1].line      # 알릭 presume
+  $r.reportPresentation.interpretedRecord.quantity
+  $r.completion.completed
+  $r.outcome.rewards.gold
 
 
-■ 3. Turn-in 응답 — UE가 쓸 필드
+■ 4. UE Blueprint 체크리스트
 --------------------------------------------------------------------------------
-
-  ok                          true
-  completion.completed        true/false  ← 최우선 분기
-  outcome.rewards.gold        숫자
-  outcome.worldFlags.cargo_destination   authority | black_market | unknown
-  outcomeBranch.branchId      authority_path | black_market_path | fallback
-
-  dialogue (완료 시 기본 포함, includeDialogue:false면 null)
-    .ok                       true
-    .npcProfileKey            scholar_alric
-    .npcSpeech                "…알릭 대사…"  ← UI에 표시
-    .provider                 openai | mock | mock_fallback
-    .questJudgmentExcluded    true (대사는 연출만, 판정과 무관)
-
-  llmExcluded                 dialogue 없으면 true
+  [ ] 의뢰: GET accept → giverPresentation.presumedLine 표시
+  [ ] 보고: 알릭만 입력 UI (경비/상인 X)
+  [ ] POST turn-in
+  [ ] reportBeats for-loop → phase별 TextBlock
+  [ ] alric_presume 에서 quantity 큰 숫자 표시
+  [ ] completed false → 골드·완료 금지
+  [ ] completed true → outcome.rewards.gold SaveGame
 
 
-■ 4. PowerShell 스모크 테스트 (UE 전에 확인)
+■ 5. 수량 참고 (소문 baseline 12)
 --------------------------------------------------------------------------------
-
-  $body = @{
-    questId = "quest_abandoned_cargo"
-    giverId = "guard_timid"
-    scenarioText = "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다"
-    sessionKey = "ue-smoke-1"
-  } | ConvertTo-Json -Compress
-
-  $r = Invoke-RestMethod -Uri "http://127.0.0.1:8787/v1/quest/turn-in" `
-    -Method POST -Body $body -ContentType "application/json; charset=utf-8"
-
-  $r.completion.completed    # True
-  $r.outcome.rewards.gold   # 150 등
-  $r.dialogue.npcSpeech     # 알릭 대사
-
-
-■ 5. Blueprint 체크리스트
---------------------------------------------------------------------------------
-  [ ] VaRest 또는 HTTP Request 노드로 POST turn-in
-  [ ] Json Object → Get Bool Field "completion" → "completed"
-  [ ] false: 실패 위젯, return
-  [ ] true: Get Number Field outcome.rewards.gold → SaveGame
-  [ ] true: Get String Field dialogue.npcSpeech → Text Block / 대화 시스템
-  [ ] (선택) provider == openai 이면 디버그 로그
+  guard_timid / merchant_greedy  의뢰 presume 15 · 보고 12 → 알릭 기록 15
+  scholar_alric                  의뢰 12 유지 · 보고 5 → 알릭 기록 5 → 암시장
 
 
 ■ 6. 자주 하는 실수
 --------------------------------------------------------------------------------
-  · turn-in 후 POST /v1/dialogue 를 또 호출  → v1부터 turn-in에 포함됨 (중복 가능)
-  · completion.completed 무시하고 gold 적용   → 보고 실패인데 보상 지급됨
-  · giverId 를 scholar_alric 으로 착각       → giverId=의뢰인, 알릭=수신 NPC
-  · API 서버 안 켠 상태에서 UE 테스트         → Connection refused
-  · file:// 웹 데모로 LLM 기대               → LLM은 API(8787) 경로, 웹(5500)은 판정만
+  · 수량을 퀘스트 완료 맨 끝에만 표시
+  · giverId = 알릭으로 착각 (giverId=의뢰인)
+  · API 서버 미기동
+  · turn-in 후 /v1/dialogue 중복 호출 (turn-in에 포함됨)
 
 
 ■ 7. 관련 문서
 --------------------------------------------------------------------------------
-  INTEGRATION-GUIDE.txt     UE 전체 연동
-  API-QUICKSTART.md         API 상세·환경 변수
-  GAME-API.json             필드 스펙
-  QUEST-FLOW-GUIDE.txt      퀘스트 시나리오 흐름
+  INTEGRATION-GUIDE.txt · QUEST-FLOW-GUIDE.txt · GAME-API.json

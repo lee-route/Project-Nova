@@ -105,12 +105,32 @@
           "worldCompare": "object|null",
           "unsupportedClaims": "object|null"
         },
-        "gameState": "QuestGameState snapshot (server demo; UE should use outcome.*)"
+        "gameState": "QuestGameState snapshot (server demo; UE should use outcome.*)",
+        "scenarioText": "string",
+        "reportPresentation": {
+          "reportBeats": "array (player_report → alric_presume → …)",
+          "alricPresumedSpeech": "string",
+          "interpretedRecord": { "quantity": "number", "presumedLine": "string" },
+          "distortion": { "playerQuantity": "number", "interpretedQuantity": "number", "occurred": "boolean" }
+        }
       }
     },
     "GET /v1/quest/accept-dialogue": {
       "in": { "questId": "query", "giverId": "query", "sessionKey": "query" },
-      "out": { "ok": true, "accept": { "line": "string", "canAccept": "boolean", "tier": "object" } }
+      "out": {
+        "ok": true,
+        "accept": {
+          "line": "string",
+          "canAccept": "boolean",
+          "tier": "object",
+          "giverPresentation": {
+            "presumedQuantity": "number",
+            "presumedLine": "string",
+            "rumorBaselineQuantity": "number",
+            "acceptBeats": "array (giver_presume first)"
+          }
+        }
+      }
     },
     "GET /v1/session/snapshot": {
       "in": { "sessionKey": "query" },

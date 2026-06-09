@@ -1,14 +1,14 @@
 ================================================================================
   Project-Nova — 팀용 빠른 따라하기 (npc-test)
-  갱신: 2026-06-11
+  갱신: 2026-06-14
 ================================================================================
 
 
 ■ 0. 뭐가 뭔지 (30초)
 --------------------------------------------------------------------------------
-  [웹 index.html]     퀘스트 판정·골드·분기 테스트 (LLM 없음)
-  [API npc-api]       UE 연동 — turn-in 한 번에 판정 + LLM 대사
-  [POST /v1/dialogue] 단독 LLM 테스트용 (UE는 turn-in만 쓰면 됨)
+  [웹 index.html]     판정·골드·분기 + 의뢰 시 지레짐작 수량 미리보기
+  [API npc-api]       UE 연동 — accept(의뢰) + turn-in(보고) 한 세트
+  [quest-presentation] 수량 연출 beats (의뢰인·알릭 지레짐작)
 
 
 ■ 1. 코드 받기
@@ -17,116 +17,68 @@
   cd models\npc-test
 
 
-■ 2. 웹에서 퀘스트 테스트 (추천 · 무료)
+■ 2. 수량 왜곡 — 플레이어가 보는 순서 (핵심)
 --------------------------------------------------------------------------------
-  (1) cmd 또는 PowerShell — 창 1
+  ① 의뢰 (경비/상인)   소문 12 → NPC가 「15개 될 거야」 (giver_presume)
+  ② 조사               UE 맵
+  ③ 보고 (알릭)        플레이어 「12개」 입력
+  ④ 알릭 직후          알릭 「15개군…」 (alric_presume) ← 보고 직후, 결과 전
+  ⑤ 결과               골드·화물 행선
 
-      cd c:\Develop\02_capstone\Project-Nova\models\npc-test
-      python -m http.server 5500
-
-      ※ 창 닫지 말 것
-      ※ index.html 더블클릭 금지 (file:// 안 됨)
-
-  (2) 브라우저
-
-      http://127.0.0.1:5500/index.html
-      Ctrl+F5
-
-  (3) 성공 예시
-      의뢰인: 소심한 경비
-      보고: 안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다
-      [퀘스트 실행] → 초록 「퀘스트 완료」 · 골드 150
-
-  ※ LLM 대사는 API turn-in 응답 dialogue.npcSpeech (UE-LLM-GUIDE.txt)
-
-  (4) 실패 예시
-      보고: 12개 확인함  또는  아무거나
-      [퀘스트 실행] → 빨간 「보고 실패」
-
-  (5) 보고 통과 최소 조건
-      · 「마약」 포함 (예: 마약초)  또는
-      · 「화물」+「계곡」 둘 다 포함
+  ※ 알릭 의뢰(faithful)는 ①에서 12 유지, ④도 12
 
 
-■ 3. API 서버 (UE / LLM용)
+■ 3. 웹 데모 (판정 테스트 · 무료)
 --------------------------------------------------------------------------------
-  (1) cmd — 창 2
+  python -m http.server 5500
+  http://127.0.0.1:5500/index.html  (Ctrl+F5)
 
-      cd c:\Develop\02_capstone\Project-Nova\models\npc-test
-      node npc-api-server.mjs
-
-  (2) 정상 로그
-      npc-api listening on http://127.0.0.1:8787
-      LLM: openai (live)   ← live 설정 시
-      LLM: openai (mock)   ← 키 없으면 mock
-
-  (3) 브라우저 확인
-      http://127.0.0.1:8787/health
-      http://127.0.0.1:8787/v1/llm/status
+  · 의뢰인 바꾸면 「의뢰 대사」에 지레짐작 수량 표시
+  · 성공 보고: 안개 계곡… 마약초 열두 개…
+  · 완료 배너: 플레이어 → 알릭 지레짐작 → 결과 순서
+  · 카드: 보고 수량 vs 기록 수량
 
 
-■ 4. OpenAI LLM (선택 · live 대사)
+■ 4. API 서버
 --------------------------------------------------------------------------------
-  ★ 팀원에게 API 키 공유하지 말 것 (깃·카톡·채팅 금지)
-  ★ 각자 platform.openai.com 에서 키 발급
-  ★ live = OpenAI 결제/크레딧 필요 (mock는 무료)
-
-  (1) 설정 파일 만들기
-
-      copy llm-config.example.json llm-config.local.json
-
-  (2) llm-config.local.json 수정
-
-      {
-        "provider": "openai",
-        "model": "gpt-4o-mini",
-        "apiKey": "sk-본인_키",
-        "useLive": true
-      }
-
-  (3) 서버 재시작
-      node npc-api-server.mjs
-
-  (4) mock만 쓰려면 (돈 0원)
-      "useLive": false
-      또는 apiKey 비워 두기
+  node npc-api-server.mjs
+  http://127.0.0.1:8787/health
 
 
-■ 5. LLM 대사 테스트 (PowerShell · API 서버 켠 상태)
+■ 5. UE 팀 — API 2번만
 --------------------------------------------------------------------------------
-  Invoke-RestMethod -Uri "http://127.0.0.1:8787/v1/dialogue" -Method POST `
-    -Body '{"scenarioText":"안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다","receiverProfileKey":"scholar_alric"}' `
-    -ContentType "application/json; charset=utf-8"
+  ① GET  /v1/quest/accept-dialogue?giverId=guard_timid
+       → accept.giverPresentation.presumedLine (의뢰인 15개)
 
-  · provider: openai  → live
-  · provider: mock    → 키 없음 / useLive false
+  ② POST /v1/quest/turn-in
+       → reportPresentation.reportBeats (플레이어→알릭→결과)
+       → completion.completed / outcome.rewards.gold
+
+  ★ UE-LLM-GUIDE.txt (1페이지)
+  ★ QUEST-FLOW-GUIDE.txt (시나리오·발표)
+  ★ INTEGRATION-GUIDE.txt (HTTP 상세)
 
 
-■ 6. UE 팀 — 호출 순서
+■ 6. LLM (선택)
 --------------------------------------------------------------------------------
-  ① GET  /v1/quest/accept-dialogue?giverId=guard_timid  (선택)
-  ② (플레이어 조사 · 맵 연출)
-  ③ POST /v1/quest/turn-in  ← 판정·골드·LLM 대사 (한 번에)
-  ④ completion.completed == true → dialogue.npcSpeech UI 표시
-  ⑤ false → 실패 UI, 골드·완료 대사 금지
-
-  ★ UE 1페이지: UE-LLM-GUIDE.txt
-  상세: INTEGRATION-GUIDE.txt · QUEST-FLOW-GUIDE.txt
+  llm-config.local.json (git 제외) 또는 env OPENAI_API_KEY
+  live 없으면 mock (무료)
+  turn-in 응답 dialogue.npcSpeech 에 포함 (별도 /v1/dialogue 불필요)
 
 
 ■ 7. 자주 하는 실수
 --------------------------------------------------------------------------------
-  · index.html file:// 로 열기        → JSON 로드 실패
-  · PowerShell 에서 cd ... && python  → && 대신 줄 나눠 실행
-  · 8787 주소로 웹 UI 기대            → 8787=API만, 웹=5500
-  · 12개 확인함 만 입력               → 마약/화물 없어서 실패 (정상)
-  · llm-config.local.json 깃 push    → 키 유출 (절대 금지)
+  · 수량을 맨 마지막 엔진 메모에만 넣음     → giver_presume / alric_presume 비트 사용
+  · 경비에게 보고 입력 UI 붙임               → 보고는 알릭만
+  · completion.completed 무시               → 실패인데 골드 지급
+  · llm-config.local.json 깃 push          → 키 유출
 
 
 ■ 8. 관련 파일
 --------------------------------------------------------------------------------
-  TEAM-QUICK-GUIDE.txt     ← 이 파일
-  UE-LLM-GUIDE.txt         UE LLM 1페이지 (turn-in + dialogue)
-  API-QUICKSTART.md        API 상세
-  QUEST-FLOW-GUIDE.txt     퀘스트·UE 흐름
-  llm-config.example.json  설정 예시 (키 없음)
+  TEAM-QUICK-GUIDE.txt       ← 이 파일
+  UE-LLM-GUIDE.txt           UE 1페이지
+  QUEST-FLOW-GUIDE.txt       흐름·시나리오
+  INTEGRATION-GUIDE.txt      HTTP·SaveGame
+  quest-presentation.mjs     연출 beats 생성
+  API-QUICKSTART.md          API 상세

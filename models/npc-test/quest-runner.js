@@ -22,6 +22,7 @@
   var summaryGold = document.querySelector("#summary-gold");
   var summaryDestination = document.querySelector("#summary-destination");
   var summaryQuantity = document.querySelector("#summary-quantity");
+  var summaryPlayerQty = document.querySelector("#summary-player-qty");
 
   var parserApi = {
     parseScenarioText: function (text) {
@@ -139,6 +140,13 @@
       summaryQuantity.textContent =
         metrics && metrics.quantity != null ? String(metrics.quantity) : "—";
     }
+    if (summaryPlayerQty && window.QuestPresentation && run.facts) {
+      var pres = window.QuestPresentation.buildReportPresentation(run, questReportText ? questReportText.value : "");
+      summaryPlayerQty.textContent =
+        pres.playerReport && pres.playerReport.quantity != null ? String(pres.playerReport.quantity) : "—";
+    } else if (summaryPlayerQty) {
+      summaryPlayerQty.textContent = "—";
+    }
     showResultSummary(true);
   }
 
@@ -148,6 +156,7 @@
     if (summaryGold) summaryGold.textContent = "—";
     if (summaryDestination) summaryDestination.textContent = "—";
     if (summaryQuantity) summaryQuantity.textContent = "—";
+    if (summaryPlayerQty) summaryPlayerQty.textContent = "—";
   }
 
   function renderSteps(steps) {
@@ -168,13 +177,19 @@
     showSteps(true);
   }
 
-  function printQuestResult(run, flowMeta) {
+  function printQuestResult(run, flowMeta, scenarioText) {
     if (!outQuest) return;
+    var reportPresentation =
+      window.QuestPresentation && scenarioText
+        ? window.QuestPresentation.buildReportPresentation(run, scenarioText)
+        : null;
     outQuest.textContent = formatJSON({
       completed: run.completion.completed,
       questState: flowMeta && flowMeta.instance && flowMeta.instance.state,
       quest: run.questId,
       giver: run.giverId,
+      scenarioText: scenarioText || "",
+      reportPresentation: reportPresentation,
       outcomeBranch: run.outcomeBranch,
       outcome: run.outcome,
       completionDialogue: flowMeta && flowMeta.completionDialogue,
@@ -203,7 +218,17 @@
         giverSelect.value,
         { sessionKey: repSessionKey(), reputationSessionKey: repSessionKey() }
       );
-      outAcceptLine.textContent = resolved && resolved.line ? resolved.line : "—";
+      if (resolved && resolved.giverPresentation && resolved.giverPresentation.presumedLine) {
+        var gp = resolved.giverPresentation;
+        outAcceptLine.textContent =
+          (resolved.line ? resolved.line + "\n\n" : "") +
+          gp.presumedLine +
+          (gp.distortedAtAccept
+            ? "\n(소문 " + gp.rumorBaselineQuantity + "개 → 의뢰인 지레짐작 " + gp.presumedQuantity + "개)"
+            : "\n(소문 " + gp.rumorBaselineQuantity + "개 · 수량 유지)");
+      } else {
+        outAcceptLine.textContent = resolved && resolved.line ? resolved.line : "—";
+      }
     } catch (err) {
       outAcceptLine.textContent = "오류: " + (err.message || err);
     }
@@ -324,8 +349,16 @@
         return;
       }
 
-      printQuestResult(turnIn, flowResult);
-      showCompletion(true, flowResult.completionDialogue || "수고했네.");
+      printQuestResult(turnIn, flowResult, report);
+      var completionLine = flowResult.completionDialogue || "수고했네.";
+      if (window.QuestPresentation) {
+        var presentation = window.QuestPresentation.buildReportPresentation(turnIn, report);
+        completionLine = window.QuestPresentation.formatCompletionNarrative(
+          presentation,
+          flowResult.completionDialogue
+        );
+      }
+      showCompletion(true, completionLine);
 
       var gold = turnIn.outcome && turnIn.outcome.rewards && turnIn.outcome.rewards.gold;
       var branch = turnIn.outcomeBranch && turnIn.outcomeBranch.branchId;

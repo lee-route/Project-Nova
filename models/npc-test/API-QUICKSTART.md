@@ -105,6 +105,14 @@ $r.dialogue.npcSpeech
 
 UE 1페이지: **`UE-LLM-GUIDE.txt`**
 
+## 4b. 의뢰 수락 (지레짐작 수량)
+
+```powershell
+$a = Invoke-RestMethod "http://127.0.0.1:8787/v1/quest/accept-dialogue?giverId=guard_timid"
+$a.accept.giverPresentation.presumedLine    # 경비 "15개 될 거야"
+$a.accept.giverPresentation.presumedQuantity # 15
+```
+
 ## 5. 자동 테스트
 
 ```bash

@@ -1,7 +1,7 @@
 ================================================================================
   Project-Nova — 퀘스트 흐름·UE 대화 통합 가이드
   퀘스트: 「밀수업자의 버려진 화물」(quest_abandoned_cargo)
-  갱신: 2026-06-11
+  갱신: 2026-06-14
   대상: UE 연출·기획·발표·팀 공유
 ================================================================================
 
@@ -49,11 +49,18 @@
 --------------------------------------------------------------------------------
 
   ┌──────────────────────────────────────────────────────────────────┐
-  │ ① 의뢰     의뢰인 대화 → 수락 + 브리핑 (연출만, 판정 없음)      │
+  │ ① 의뢰     의뢰인 대화 → giver_presume (지레짐작 수량 말함)   │
   │ ② 조사     안개 계곡 이동 · 화물 확인 (UE 맵 연출)               │
-  │ ③ 보고     알릭 대화 → 플레이어 한국어 입력 → turn-in API       │
-  │ ④ 결과     completion.completed ? 성공 연출 : 실패 연출         │
+  │ ③ 보고     알릭 → 플레이어 입력 → turn-in                        │
+  │ ③b         alric_presume (알릭이 해석 수량 말함 · 결과 전)       │
+  │ ④ 결과     completion.completed ? 골드·행선 : 실패             │
   └──────────────────────────────────────────────────────────────────┘
+
+  수량 연출 예 (경비 의뢰 · 플레이어 12개 보고)
+    ① 경비: 「15개는 될 거야」(소문 12 → dramatic)
+    ③ 플레이어: 「마약초 열두 개」
+    ③b 알릭: 「15개군…」(기록 15 — 플레이어 12를 되풀이하지 않음)
+    ④ 관청 150골드
 
   엔진 파이프라인 (③)
     scenarioText → npc-parser → facts[] → quest-system → interpretedFacts
@@ -78,16 +85,18 @@
   단계   UE에서 할 일                          엔진/API
   ────   ───────────────────────────────────   ─────────────────────────
   ① 의뢰  F 대화 · 의뢰인 NPC                  GET /v1/quest/accept-dialogue
+         giverPresentation.presumedLine 표시
          SaveGame: questId, giverId
   ② 조사  던전 맵 이동 · 오브젝트·자막          (엔진 호출 없음)
   ③ 보고  F 대화 · 알릭 · 입력 UI              POST /v1/quest/turn-in
-         scenarioText 화면에 노출 필수
-  ④ 결과  completed 분기                       응답 파싱 → SaveGame
+         reportBeats[1] alric_presume 즉시 표시
+  ④ 결과  completed 분기                       골드·cargo_destination
 
-  현재 UE gap (2026-06-11)
-    · WBP_Dialogue 있으나 npcs.json·turn-in 미연동 가능
-    · placeholder NPC명·단방향 대사만 있으면 「자유 입력 보고」가 안 보임
-    · 해결: §9 체크리스트 + INTEGRATION-GUIDE.txt
+  API 필드: quest-presentation.mjs · UE-LLM-GUIDE.txt
+
+  현재 UE gap
+    · WBP_Dialogue → accept/turn-in JSON 미연동 시 수량 안 보임
+    · 해결: reportBeats / giverPresentation 바인딩 (§9)
 
 
 5. 시나리오 (발표·테스트용)
@@ -173,29 +182,30 @@
 
 9. UE 체크리스트
 --------------------------------------------------------------------------------
-  [ ] 의뢰: 화자=의뢰인, accept-dialogue, SaveGame questId/giverId
-  [ ] 조사: Fantastic_Dungeon 맵 연출 (엔진 호출 없음)
-  [ ] 보고: 화자=알릭, 입력칸+제출 버튼, scenarioText 말풍선 표시
-  [ ] turn-in: POST 후 completion.completed 확인
-  [ ] 성공: 골드·cargo_destination·completionDialogue
-  [ ] 실패: reason 표시, 골드·완료 연출 금지
-  [ ] placeholder NPC명 → npcs.json displayName
-  [ ] NPC-only 단방향 UI 금지 (보고 구간)
+  [ ] 의뢰: accept.giverPresentation.presumedLine (의뢰인 지레짐작 수량)
+  [ ] 조사: Fantastic_Dungeon 맵 연출
+  [ ] 보고: 알릭만 입력 UI · player_report 말풍선
+  [ ] 보고 직후: reportBeats alric_presume (해석 수량 · 결과 전)
+  [ ] turn-in: completion.completed 확인
+  [ ] 성공: 골드·cargo_destination · outcome beat
+  [ ] 실패: reason · 골드·완료 금지
+  [ ] npcs.json displayName
 
 
 10. 발표용 핵심 4줄
 --------------------------------------------------------------------------------
-  1) 브리핑 과장 ≠ 판정 — 플레이어 보고문만 엔진이 해석한다.
-  2) 같은 12개도 의뢰인에 따라 15 vs 12 해석 가능.
-  3) 보고 시 입력 글자가 화면에 보여야 한다.
-  4) 완료 = completion.completed 만 — 아무 말이나 치면 완료 아님.
+  1) 의뢰 때 의뢰인이 먼저 수량을 지레짐작한다 (giver_presume).
+  2) 보고 직후 알릭이 해석 수량을 말한다 (alric_presume) — 맨 끝 X.
+  3) 같은 12개 보고도 의뢰인에 따라 기록 15 vs 12.
+  4) 완료 = completion.completed 만.
 
 
 11. 관련 파일
 --------------------------------------------------------------------------------
   quests-draft.json       퀘스트·대사·분기 원본
   npcs.json               NPC 표시명·성향
-  quest-runtime.js        turn-in·runQuestFlow·factMatch
+  quest-runtime.js        turn-in·accept·runQuestFlow
+  quest-presentation.mjs  giver/alric presume beats
   index.html              브라우저 데모
   quest-test.mjs          회귀 (엉뚱한 보고 실패 포함)
   INTEGRATION-GUIDE.txt   HTTP·SaveGame 상세

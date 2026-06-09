@@ -57,6 +57,14 @@ assert(typeof health.json.llmEnabled === "boolean", "health llmEnabled flag");
 const meta = await call("GET", "/v1/quest/meta");
 assert(meta.json.ok && meta.json.givers.length >= 3, "quest meta");
 
+const acceptGuard = await call(
+  "GET",
+  "/v1/quest/accept-dialogue?giverId=guard_timid&sessionKey=api-test-accept"
+);
+assert(acceptGuard.json.ok && acceptGuard.json.accept.giverPresentation, "accept giverPresentation");
+assert(acceptGuard.json.accept.giverPresentation.presumedQuantity === 15, "accept guard presumes 15");
+assert(acceptGuard.json.accept.giverPresentation.presumedSpeech.indexOf("15") >= 0, "accept speech qty");
+
 const parse = await call("POST", "/v1/parse", {
   scenarioText: "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다",
 });
@@ -79,6 +87,14 @@ assert(turnIn.json.gameState && turnIn.json.gameState.gold >= 0, "game state app
 assert(turnIn.json.llmExcluded === false, "dialogue included by default on completion");
 assert(turnIn.json.dialogue && turnIn.json.dialogue.ok && turnIn.json.dialogue.npcSpeech, "turn-in dialogue npcSpeech");
 assert(turnIn.json.dialogue.provider, "turn-in dialogue provider");
+assert(turnIn.json.reportPresentation, "reportPresentation on turn-in");
+assert(turnIn.json.reportPresentation.distortion.occurred === true, "guard distortion in API");
+assert(turnIn.json.reportPresentation.playerReport.quantity === 12, "API player qty");
+assert(turnIn.json.reportPresentation.interpretedRecord.quantity === 15, "API interpreted qty");
+assert(turnIn.json.dialogue.npcSpeech.indexOf("15") >= 0, "dialogue mentions interpreted qty");
+assert(turnIn.json.dialogue.presentation, "dialogue.presentation block");
+assert(turnIn.json.reportPresentation.alricPresumedSpeech.indexOf("15") >= 0, "presumed speech 15");
+assert(turnIn.json.reportPresentation.reportBeats[1].phase === "alric_presume", "reportBeats presume phase");
 
 const turnInNoLlm = await call("POST", "/v1/quest/turn-in", {
   questId: "quest_abandoned_cargo",

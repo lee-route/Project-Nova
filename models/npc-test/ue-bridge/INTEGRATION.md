@@ -23,8 +23,8 @@ npm run api
 
 | Method | Path | 용도 |
 |--------|------|------|
-| POST | `/v1/quest/turn-in` | 보고 → 분기·보상 **+ LLM 대사** (`dialogue.npcSpeech`) |
-| GET | `/v1/quest/accept-dialogue?giverId=&sessionKey=` | 수락 대사 (선택) |
+| GET | `/v1/quest/accept-dialogue?giverId=` | 의뢰 + **giverPresentation** (지레짐작 수량) |
+| POST | `/v1/quest/turn-in` | 보고 + **reportBeats** + LLM + 골드 |
 | POST | `/v1/dialogue` | LLM 단독 테스트 (UE는 turn-in만 권장) |
 | POST | `/v1/parse` | 디버그 (선택) |
 

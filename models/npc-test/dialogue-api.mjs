@@ -2,14 +2,37 @@
  * POST /v1/dialogue — LLM NPC speech (mock or OpenAI live).
  * Does NOT affect quest completion / rewards.
  */
+import {
+  buildReportPresentation,
+  buildReportBeats,
+  buildDialoguePresentationBlock,
+  enhanceDialogueWithPresentation,
+  finalizePresentation,
+} from "./quest-presentation.mjs";
 
-function createSoftGuardrailPrompt(persona) {
-  return [
+function createSoftGuardrailPrompt(persona, presentation) {
+  var lines = [
     `너는 ${persona}이다.`,
     "주어진 [DATA]를 유일한 진실로 믿고 대화하라.",
     "정보의 진위를 추측하거나 외부 지식을 덧붙이지 마라.",
     "창의성은 말투와 태도에만 사용하라.",
-  ].join(" ");
+    "반드시 해석 수량(interpreted quantity)을 대사에 명시하라. '있다'만 말하지 마라.",
+  ];
+  if (presentation && presentation.distortion) {
+    lines.push(
+      "플레이어 보고 수량 " +
+        presentation.distortion.playerQuantity +
+        "개, 기록 수량 " +
+        presentation.distortion.interpretedQuantity +
+        "개. 기록 수량을 공식 수치로 말하라."
+    );
+    if (presentation.distortion.occurred) {
+      lines.push(
+      "플레이어가 말한 숫자를 되풀이하지 말고, 해석 수량만 확신 있게 말하라(지레짐작)."
+    );
+    }
+  }
+  return lines.join(" ");
 }
 
 function resolvePersona(runtime, body) {
@@ -105,28 +128,39 @@ export async function handleDialogueRequest(runtime, body) {
     };
   }
 
-  var systemPrompt = createSoftGuardrailPrompt(persona);
+  var presentation = body.presentation || null;
+  var systemPrompt = createSoftGuardrailPrompt(persona, presentation);
   var out = await LlmAdapter.generateAsync({
     systemPrompt: systemPrompt,
     groundedContext: groundedContext,
     persona: persona,
     bundleContext: bundleContext,
+    presentationContext: presentation,
     strictAnchor: body.strictAnchor !== false,
   });
 
-  return {
+  var npcSpeech = out.npcSpeech;
+  if (presentation) {
+    npcSpeech = enhanceDialogueWithPresentation(npcSpeech, presentation);
+  }
+
+  var result = {
     ok: true,
-    npcSpeech: out.npcSpeech,
+    npcSpeech: npcSpeech,
     provider: out.provider,
     persona: persona,
     anchorValidation: out.anchorValidation,
     fallbackStyle: out.fallbackStyle || null,
     questJudgmentExcluded: true,
   };
+  if (presentation) {
+    result.presentation = buildDialoguePresentationBlock(presentation, npcSpeech, out.provider);
+  }
+  return result;
 }
 
 /** Turn-in 완료 응답에 붙일 LLM 대사 (판정·보상과 분리). */
-export async function dialogueFromTurnIn(runtime, turnIn) {
+export async function dialogueFromTurnIn(runtime, turnIn, scenarioText) {
   if (!turnIn || !turnIn.completion || !turnIn.completion.completed) {
     return null;
   }
@@ -138,18 +172,22 @@ export async function dialogueFromTurnIn(runtime, turnIn) {
     return null;
   }
   var npcProfileKey = turnIn.turnInProfileKey || "scholar_alric";
+  var presentation = finalizePresentation(buildReportPresentation(turnIn, scenarioText));
   var result = await handleDialogueRequest(runtime, {
     interpretedFacts: interpreted,
     npcProfileKey: npcProfileKey,
+    presentation: presentation,
   });
   if (!result.ok) {
     return {
       ok: false,
       npcProfileKey: npcProfileKey,
       error: result.error,
+      reportPresentation: presentation,
       questJudgmentExcluded: true,
     };
   }
+  presentation.reportBeats = buildReportBeats(presentation, result.npcSpeech);
   return {
     ok: true,
     npcProfileKey: npcProfileKey,
@@ -158,6 +196,8 @@ export async function dialogueFromTurnIn(runtime, turnIn) {
     persona: result.persona,
     anchorValidation: result.anchorValidation,
     fallbackStyle: result.fallbackStyle || null,
+    reportPresentation: presentation,
+    presentation: result.presentation || buildDialoguePresentationBlock(presentation, result.npcSpeech, result.provider),
     questJudgmentExcluded: true,
   };
 }

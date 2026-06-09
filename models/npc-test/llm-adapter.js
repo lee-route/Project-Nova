@@ -80,23 +80,43 @@
       return subjectText + subjectParticle + " " + actionText + "! " + targetText + ", " + qtyText + "!";
     }
     if (persona === "calm_scholar") {
-      return "정리하면 " + subjectText + subjectParticle + " " + actionText + ". " + targetText + ", " + certaintyText + ".";
+      return "정리하면 " + subjectText + subjectParticle + " " + actionText + ". " + targetText + ", " + qtyText + ", " + certaintyText + ".";
     }
     return subjectText + subjectParticle + " " + actionText + ". " + targetText + ", " + qtyText + ", " + certaintyText + ".";
   }
 
-  function buildUserMessage(groundedContext, bundleContext) {
+  function buildUserMessage(groundedContext, bundleContext, presentationContext) {
     var dataBlock = JSON.stringify(groundedContext.dataOnly || groundedContext, null, 2);
     var notes =
       bundleContext && bundleContext.hasContradiction
         ? "\n[주의] 번들 내 일부 사실이 서로 모순될 수 있음 — DATA에 있는 확신도만 반영."
         : "";
+    var presBlock = "";
+    if (presentationContext && presentationContext.distortion) {
+      presBlock =
+        "\n[보고 연출]\n" +
+        "- 플레이어 보고: " +
+        presentationContext.distortion.playerQuantity +
+        "개\n" +
+        "- 공식 기록(해석): " +
+        presentationContext.distortion.interpretedQuantity +
+        "개\n" +
+        "- 의뢰인: " +
+        (presentationContext.giverLabel || "") +
+        " (" +
+        (presentationContext.quantityMode || "") +
+        ")\n" +
+        (presentationContext.distortion.occurred
+          ? "- 보고와 기록이 다름. 대사에서 기록 수량을 명시하고 차이를 짧게 언급할 것.\n"
+          : "- 보고와 기록 일치. 기록 수량을 명시할 것.\n");
+    }
     return (
       "[Grounded DATA]\n" +
       dataBlock +
       notes +
+      presBlock +
       "\n\n위 JSON의 사실만 사용해 NPC 대사를 2~4문장 한국어로 작성하라. " +
-      "수치·장소·주어·행동을 바꾸거나 추가 사건을 지어내지 마라. 말투만 페르소나에 맞출 것."
+      "수량(quantity)을 반드시 말로 포함하라. 수치·장소·주어·행동을 바꾸거나 추가 사건을 지어내지 마라. 말투만 페르소나에 맞출 것."
     );
   }
 
@@ -202,10 +222,18 @@
       return factToSpeechLine(f, persona);
     });
     var tension = bundleContext.hasContradiction ? " (다만 일부 정보는 서로 맞지 않아 보인다고 덧붙이며)" : "";
-    var speech =
+    var speechBody =
       facts.length > 1
-        ? style + ' 말한다: "' + speechLines.join(" 그리고 ") + '"' + tension + " (출처: " + source + ")"
-        : style + ' 말한다: "' + (speechLines[0] || "정보가 전달되지 않았다") + '"' + tension + " (출처: " + source + ")";
+        ? speechLines.join(" 그리고 ")
+        : speechLines[0] || "정보가 전달되지 않았다";
+    if (params.presentationContext && persona === "calm_scholar") {
+      if (params.presentationContext.alricPresumedSpeech) {
+        speechBody = params.presentationContext.alricPresumedSpeech;
+      } else if (params.presentationContext.alricDiegeticSpeech) {
+        speechBody = params.presentationContext.alricDiegeticSpeech;
+      }
+    }
+    var speech = style + ' 말한다: "' + speechBody + '"' + tension + " (출처: " + source + ")";
     return wrapDialogueOutput(systemPrompt, groundedContext, speech, "mock");
   }
 
@@ -296,7 +324,7 @@
     if (typeof global.fetch !== "function") {
       throw new Error("fetch is not available (use browser or Node 18+)");
     }
-    var userMessage = buildUserMessage(params.groundedContext, params.bundleContext);
+    var userMessage = buildUserMessage(params.groundedContext, params.bundleContext, params.presentationContext);
     var rawText;
     if (runtime.provider === "anthropic") {
       rawText = await callAnthropic(params.systemPrompt, userMessage, runtime);

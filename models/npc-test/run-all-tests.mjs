@@ -11,6 +11,7 @@ const suites = [
   "npc-parser-test.mjs",
   "deception-audit-test.mjs",
   "api-server-test.mjs",
+  "quest-presentation-test.mjs",
   "distortion-test.mjs",
   "integration-test.mjs",
   "quest-test.mjs",
