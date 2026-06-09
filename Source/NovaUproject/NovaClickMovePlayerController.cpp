@@ -55,16 +55,16 @@ ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 	}
 }
 
-namespace NovaVoiceDebug
+namespace NovaWeaponDisplay
 {
 	static FString CommandToDisplayName(ENovaVoiceCommand Command)
 	{
 		switch (Command)
 		{
-		case ENovaVoiceCommand::Bow: return TEXT("활");
-		case ENovaVoiceCommand::Shield: return TEXT("방패");
-		case ENovaVoiceCommand::Scythe: return TEXT("낫");
-		case ENovaVoiceCommand::Hammer: return TEXT("검");
+		case ENovaVoiceCommand::Hammer: return TEXT("Sword (칼)");
+		case ENovaVoiceCommand::Bow: return TEXT("Bow (활)");
+		case ENovaVoiceCommand::Scythe: return TEXT("Spear (창)");
+		case ENovaVoiceCommand::Shield: return TEXT("Shield (방패)");
 		case ENovaVoiceCommand::Help: return TEXT("도와줘");
 		case ENovaVoiceCommand::Cancel: return TEXT("취소");
 		default: return TEXT("None");
@@ -1017,7 +1017,7 @@ bool ANovaClickMovePlayerController::SwitchSecondaryWeapon(ENovaVoiceCommand Wea
 			-1,
 			1.5f,
 			FColor::Green,
-			FString::Printf(TEXT("Weapon switched: %s"), *NovaVoiceDebug::CommandToDisplayName(WeaponCommand))
+			FString::Printf(TEXT("Weapon switched: %s"), *NovaWeaponDisplay::CommandToDisplayName(WeaponCommand))
 		);
 	}
 
@@ -1126,7 +1126,7 @@ void ANovaClickMovePlayerController::OnCounterSucceeded(ENovaBossCounterType Cou
 			FString::Printf(
 				TEXT("Boss counter success: pattern=%d weapon=%s"),
 				static_cast<int32>(CounterType),
-				*NovaVoiceDebug::CommandToDisplayName(Command)
+				*NovaWeaponDisplay::CommandToDisplayName(Command)
 			)
 		);
 	}
@@ -1134,10 +1134,25 @@ void ANovaClickMovePlayerController::OnCounterSucceeded(ENovaBossCounterType Cou
 	OnBossCounterVisualSuccess(CounterType, Command);
 }
 
-void ANovaClickMovePlayerController::OnWeaponKey1() { HandleWeaponSwitchInput(ENovaVoiceCommand::Hammer); }
-void ANovaClickMovePlayerController::OnWeaponKey2() { HandleWeaponSwitchInput(ENovaVoiceCommand::Bow); }
-void ANovaClickMovePlayerController::OnWeaponKey3() { HandleWeaponSwitchInput(ENovaVoiceCommand::Scythe); }
-void ANovaClickMovePlayerController::OnWeaponKey4() { HandleWeaponSwitchInput(ENovaVoiceCommand::Shield); }
+void ANovaClickMovePlayerController::OnWeaponKey1()
+{
+	HandleWeaponSwitchInput(ENovaVoiceCommand::Hammer); // 검
+}
+
+void ANovaClickMovePlayerController::OnWeaponKey2()
+{
+	HandleWeaponSwitchInput(ENovaVoiceCommand::Bow); // 활
+}
+
+void ANovaClickMovePlayerController::OnWeaponKey3()
+{
+	HandleWeaponSwitchInput(ENovaVoiceCommand::Scythe); // 창
+}
+
+void ANovaClickMovePlayerController::OnWeaponKey4()
+{
+	HandleWeaponSwitchInput(ENovaVoiceCommand::Shield); // 방패
+}
 
 void ANovaClickMovePlayerController::OnDebugCounterKeyF5() { OpenBossCounterWindow(ENovaBossCounterType::LaserShield); }
 void ANovaClickMovePlayerController::OnDebugCounterKeyF6() { OpenBossCounterWindow(ENovaBossCounterType::SpaceScythe); }
