@@ -3,11 +3,14 @@
 #include "NovaClickMovePlayerController.h"
 
 #include "NovaCombatVoiceGateComponent.h"
+#include "NovaParagonGruxBossComponent.h"
 #include "NovaSecondaryWeaponVisualComponent.h"
 #include "NovaVoiceCaptureComponent.h"
 #include "InputCoreTypes.h"
+#include "UObject/ConstructorHelpers.h"
 #include "Camera/CameraComponent.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "Engine/Engine.h"
@@ -17,6 +20,14 @@
 #include "NiagaraSystem.h"
 #include "Particles/ParticleSystem.h"
 #include "Blueprint/UserWidget.h"
+#include "UObject/UObjectGlobals.h"
+#include "CollisionQueryParams.h"
+#include "Engine/OverlapResult.h"
+#include "NavigationSystem.h"
+#include "NavigationPath.h"
+#include "Animation/AnimInstance.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "UObject/SoftObjectPath.h"
 
 ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 {
@@ -29,6 +40,14 @@ ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 	VoiceCaptureComponent = CreateDefaultSubobject<UNovaVoiceCaptureComponent>(TEXT("VoiceCaptureComponent"));
 	CombatVoiceGateComponent = CreateDefaultSubobject<UNovaCombatVoiceGateComponent>(TEXT("CombatVoiceGateComponent"));
 
+	static ConstructorHelpers::FClassFinder<UUserWidget> DialogueWidgetBP(
+		TEXT("/Game/Fantastic_Dungeon_Pack/maps/WBP_Dialogue")
+	);
+	if (DialogueWidgetBP.Succeeded())
+	{
+		DialogueWidgetClass = DialogueWidgetBP.Class;
+	}
+
 	if (VoiceCaptureComponent)
 	{
 		VoiceCaptureComponent->OnVoiceCommandRecognized.AddDynamic(this, &ANovaClickMovePlayerController::OnVoiceCommandRecognized);
@@ -37,6 +56,7 @@ ANovaClickMovePlayerController::ANovaClickMovePlayerController()
 	if (CombatVoiceGateComponent)
 	{
 		CombatVoiceGateComponent->OnCounterSucceeded.AddDynamic(this, &ANovaClickMovePlayerController::OnCounterSucceeded);
+		CombatVoiceGateComponent->OnCounterWindowOpened.AddDynamic(this, &ANovaClickMovePlayerController::OnCounterWindowOpened);
 	}
 }
 
@@ -67,15 +87,8 @@ void ANovaClickMovePlayerController::BeginPlay()
 		GetPawn() ? *GetPawn()->GetClass()->GetName() : TEXT("None"),
 		GetWorld() ? *GetWorld()->GetName() : TEXT("None"));
 
-	// Ensure mouse clicks are routed to the game.
-	bShowMouseCursor = true;
-	bEnableClickEvents = true;
-	bEnableMouseOverEvents = true;
-
-	// Game+UI so cursor remains visible and consistent.
-	FInputModeGameAndUI Mode;
-	Mode.SetHideCursorDuringCapture(false);
-	SetInputMode(Mode);
+	// 통합 조작: 우클릭 이동 — 커서 필요
+	ApplyGameplayInputMode();
 
 	// Optional: replace OS cursor image with a UMG widget cursor.
 	if (CursorWidgetClass)
@@ -86,20 +99,21 @@ void ANovaClickMovePlayerController::BeginPlay()
 		}
 	}
 
-	// PIE 시작 시점은 기본으로 디아블로(탑다운) 시점.
-	bIsTopDownCamera = true;
-	ApplyTopDownCamera();
+	bIsTopDownCamera = !IsFirstPersonDungeonPawn();
+	ApplyFixedOrbitCamera();
 
 	if (GEngine)
 	{
 		const FString PawnName = GetPawn() ? GetPawn()->GetClass()->GetName() : TEXT("None");
 		GEngine->AddOnScreenDebugMessage(
 			-1,
-			5.0f,
+			10.0f,
 			FColor::Cyan,
-			FString::Printf(TEXT("Nova PC BeginPlay. Pawn=%s (1:검 2:활 3:창 4:방패, F5-F8: counter)"), *PawnName)
+			FString::Printf(
+				TEXT("Nova 조작 | RMB이동 LMB대시 Space점프 A/D시점 QWER F대화 G종료 | Pawn=%s"),
+				*PawnName
+			)
 		);
-
 		if (VoiceCaptureComponent)
 		{
 			UE_LOG(LogTemp, Warning, TEXT("NOVA VoiceCaptureComponent exists. Before StartListening: %s"),
@@ -128,7 +142,129 @@ void ANovaClickMovePlayerController::BeginPlay()
 void ANovaClickMovePlayerController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
+
+	bIsTopDownCamera = !IsFirstPersonDungeonPawn();
+	if (InPawn)
+	{
+		CameraYawDegrees = FMath::UnwindDegrees(InPawn->GetActorRotation().Yaw - CharacterFacingYawOffset);
+	}
+	else
+	{
+		CameraYawDegrees = GetControlRotation().Yaw;
+	}
+
+	// Pawn Enhanced Input(WASD/F/Space 등)과 C++ 조작 충돌 방지 — 이동은 PC가 AddMovementInput으로 처리
+	if (InPawn)
+	{
+		InPawn->DisableInput(this);
+		ApplyMovementRotationSettings(InPawn);
+		ApplyMedievalKnightVisual(InPawn);
+
+		if (bUseMedievalKnightVisual && InPawn->GetWorld())
+		{
+			TWeakObjectPtr<APawn> WeakPawn(InPawn);
+			FTimerHandle KnightVisualTimer;
+			InPawn->GetWorld()->GetTimerManager().SetTimer(
+				KnightVisualTimer,
+				[this, WeakPawn]()
+				{
+					if (WeakPawn.IsValid())
+					{
+						ApplyMedievalKnightVisual(WeakPawn.Get());
+					}
+				},
+				0.15f,
+				false);
+		}
+	}
+
+	FRotator ControlRot = GetControlRotation();
+	ControlRot.Yaw = CameraYawDegrees;
+	SetControlRotation(ControlRot);
+
+	ApplyFixedOrbitCamera();
 	ApplyWeaponVisualToPawn(EquippedSecondaryWeapon);
+	ApplyGameplayInputMode();
+}
+
+void ANovaClickMovePlayerController::OnUnPossess()
+{
+	if (APawn* P = GetPawn())
+	{
+		P->EnableInput(this);
+	}
+
+	Super::OnUnPossess();
+}
+
+void ANovaClickMovePlayerController::ApplyGameplayInputMode()
+{
+	bShowMouseCursor = true;
+	bEnableClickEvents = true;
+	bEnableMouseOverEvents = true;
+
+	// 마우스 시점 입력 차단 — A/D만 TurnCamera()에서 SetControlRotation으로 처리
+	SetIgnoreLookInput(true);
+
+	if (IsDialogueActive())
+	{
+		FInputModeGameAndUI Mode;
+		if (ActiveDialogueWidget)
+		{
+			Mode.SetWidgetToFocus(ActiveDialogueWidget->TakeWidget());
+		}
+		Mode.SetHideCursorDuringCapture(false);
+		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(Mode);
+		return;
+	}
+
+	FInputModeGameAndUI Mode;
+	Mode.SetHideCursorDuringCapture(false);
+	Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	SetInputMode(Mode);
+}
+
+void ANovaClickMovePlayerController::ApplyMovementRotationSettings(APawn* InPawn)
+{
+	ACharacter* ControlledCharacter = Cast<ACharacter>(InPawn);
+	if (!ControlledCharacter)
+	{
+		return;
+	}
+
+	if (UCharacterMovementComponent* Move = ControlledCharacter->GetCharacterMovement())
+	{
+		Move->bOrientRotationToMovement = false;
+		Move->bUseControllerDesiredRotation = false;
+		Move->MaxStepHeight = MaxStepHeight;
+		Move->SetWalkableFloorAngle(MaxWalkableFloorAngle);
+		Move->bCanWalkOffLedges = true;
+	}
+
+	ControlledCharacter->bUseControllerRotationYaw = false;
+	ControlledCharacter->bUseControllerRotationPitch = false;
+	ControlledCharacter->bUseControllerRotationRoll = false;
+}
+
+void ANovaClickMovePlayerController::ConsumeLookAxis(float Value)
+{
+	// MouseX/MouseY/Turn/LookUp 흡수 — 시점은 A/D 전용
+}
+
+void ANovaClickMovePlayerController::TickDialogueInput()
+{
+	const bool bGDown = IsInputKeyDown(EKeys::G);
+	if (bGDown && !bPrevGKeyDown)
+	{
+		EndDialogueMode();
+	}
+	bPrevGKeyDown = bGDown;
+}
+
+bool ANovaClickMovePlayerController::IsDialogueActive() const
+{
+	return ActiveDialogueWidget != nullptr;
 }
 
 void ANovaClickMovePlayerController::SetupInputComponent()
@@ -139,50 +275,44 @@ void ANovaClickMovePlayerController::SetupInputComponent()
 		*GetClass()->GetName(),
 		InputComponent ? *InputComponent->GetClass()->GetName() : TEXT("None"));
 
-	// No project input mappings required.
-	InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &ANovaClickMovePlayerController::OnLeftClickPressed);
-	InputComponent->BindKey(EKeys::LeftMouseButton, IE_Released, this, &ANovaClickMovePlayerController::OnLeftClickReleased);
-
-	// Shift + V: toggle control mode
-	InputComponent->BindKey(EKeys::V, IE_Pressed, this, &ANovaClickMovePlayerController::OnVPressed);
-
-	// Space: dash (jump removed)
-	InputComponent->BindKey(EKeys::SpaceBar, IE_Pressed, this, &ANovaClickMovePlayerController::OnDashPressed);
-
-	// Legacy axis mappings (Project Settings -> Input)
-	InputComponent->BindAxis(TEXT("MoveForward"), this, &ANovaClickMovePlayerController::MoveForward);
-	InputComponent->BindAxis(TEXT("MoveRight"), this, &ANovaClickMovePlayerController::MoveRight);
-
-	// Keyboard fallback for weapon switching.
+	// 고정 조작(QWER/F/G/Space/RMB/A/D)은 InputKey에서 처리. 음성·디버그 키만 BindKey.
 	InputComponent->BindKey(EKeys::One, IE_Pressed, this, &ANovaClickMovePlayerController::OnWeaponKey1);
 	InputComponent->BindKey(EKeys::Two, IE_Pressed, this, &ANovaClickMovePlayerController::OnWeaponKey2);
 	InputComponent->BindKey(EKeys::Three, IE_Pressed, this, &ANovaClickMovePlayerController::OnWeaponKey3);
 	InputComponent->BindKey(EKeys::Four, IE_Pressed, this, &ANovaClickMovePlayerController::OnWeaponKey4);
 
-	// Debug keys to simulate boss counter windows from the report.
 	InputComponent->BindKey(EKeys::F5, IE_Pressed, this, &ANovaClickMovePlayerController::OnDebugCounterKeyF5);
 	InputComponent->BindKey(EKeys::F6, IE_Pressed, this, &ANovaClickMovePlayerController::OnDebugCounterKeyF6);
 	InputComponent->BindKey(EKeys::F7, IE_Pressed, this, &ANovaClickMovePlayerController::OnDebugCounterKeyF7);
 	InputComponent->BindKey(EKeys::F8, IE_Pressed, this, &ANovaClickMovePlayerController::OnDebugCounterKeyF8);
-	// Skill keys for current weapon.
-	InputComponent->BindKey(EKeys::Q, IE_Pressed, this, &ANovaClickMovePlayerController::OnSkillQ);
-	InputComponent->BindKey(EKeys::W, IE_Pressed, this, &ANovaClickMovePlayerController::OnSkillW);
-	InputComponent->BindKey(EKeys::E, IE_Pressed, this, &ANovaClickMovePlayerController::OnSkillE);
-	InputComponent->BindKey(EKeys::R, IE_Pressed, this, &ANovaClickMovePlayerController::OnSkillR);
+
+	// 마우스/기본 Look 축 차단 (우클릭 이동만, 시점은 A/D)
+	InputComponent->BindAxis(TEXT("Turn"), this, &ANovaClickMovePlayerController::ConsumeLookAxis);
+	InputComponent->BindAxis(TEXT("LookUp"), this, &ANovaClickMovePlayerController::ConsumeLookAxis);
+	InputComponent->BindAxis(TEXT("MouseX"), this, &ANovaClickMovePlayerController::ConsumeLookAxis);
+	InputComponent->BindAxis(TEXT("MouseY"), this, &ANovaClickMovePlayerController::ConsumeLookAxis);
 }
 
 void ANovaClickMovePlayerController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
 
-	// While holding LMB, keep updating the destination under cursor.
-	// When released, we keep moving to the last destination until reached.
-	if (ControlMode == ENovaControlMode::ClickMove && bIsHoldingMove)
+	if (IsDialogueActive())
+	{
+		TickDialogueInput();
+		return;
+	}
+
+	ApplyCameraYaw(DeltaTime);
+	ApplyFixedOrbitCamera();
+
+	// 우클릭 홀드: 커서 아래 목적지 갱신
+	if (ControlMode == ENovaControlMode::ClickMove && bIsHoldingMove && !IsDialogueActive())
 	{
 		UpdateDestinationUnderCursor(/*bPrintDebug*/ false);
 	}
 
-	if (!bHasDestination)
+	if (!bHasDestination || IsDialogueActive())
 	{
 		return;
 	}
@@ -199,16 +329,30 @@ void ANovaClickMovePlayerController::PlayerTick(float DeltaTime)
 	}
 
 	const FVector Current = P->GetActorLocation();
-	FVector To = Destination - Current;
-	To.Z = 0.f;
+	const FVector ActiveTarget = GetActiveMoveTarget();
+	FVector To = ActiveTarget - Current;
 
+	const float Acceptance = (FMath::Abs(To.Z) > 30.f)
+		? AcceptanceRadius * 1.75f
+		: AcceptanceRadius;
 	const float DistSq = To.SizeSquared();
-	if (DistSq <= FMath::Square(AcceptanceRadius))
+	if (DistSq <= FMath::Square(Acceptance))
 	{
-		bHasDestination = false;
+		if (NavPathIndex + 1 < NavPathPoints.Num())
+		{
+			++NavPathIndex;
+		}
+		else
+		{
+			bHasDestination = false;
+			NavPathPoints.Reset();
+			NavPathIndex = 0;
+			bDestinationRequiresDirectMove = false;
+		}
 		return;
 	}
 
+	To.Z = 0.f;
 	const FVector Dir = To.GetSafeNormal();
 	P->AddMovementInput(Dir, 1.0f);
 
@@ -243,49 +387,70 @@ void ANovaClickMovePlayerController::SetControlMode(ENovaControlMode NewMode)
 	{
 		bIsHoldingMove = false;
 		bHasDestination = false;
+		NavPathPoints.Reset();
+		NavPathIndex = 0;
+		bDestinationRequiresDirectMove = false;
 	}
 }
 
-void ANovaClickMovePlayerController::OnLeftClickPressed()
+void ANovaClickMovePlayerController::OnRightClickPressed()
 {
-	if (ControlMode != ENovaControlMode::ClickMove)
+	if (ControlMode != ENovaControlMode::ClickMove || IsDialogueActive())
 	{
 		return;
 	}
 
 	bIsHoldingMove = true;
-	UpdateDestinationUnderCursor(/*bPrintDebug*/ true);
+	UpdateDestinationUnderCursor(/*bPrintDebug*/ false);
 }
 
-void ANovaClickMovePlayerController::OnLeftClickReleased()
+void ANovaClickMovePlayerController::OnRightClickReleased()
 {
 	bIsHoldingMove = false;
-	// Intentionally keep bHasDestination as-is so we continue to the last point.
 }
+
+static USpringArmComponent* FindSpringArmOnPawn(APawn* P);
+static UCameraComponent* FindCameraOnPawn(APawn* P);
 
 void ANovaClickMovePlayerController::UpdateDestinationUnderCursor(bool bPrintDebug)
 {
 	FHitResult Hit;
-	bool bHit = GetHitResultUnderCursor(ECC_Visibility, /*bTraceComplex*/ false, Hit);
-	if (!bHit)
-	{
-		// Some meshes don't block Visibility; Camera is a common alternative.
-		bHit = GetHitResultUnderCursor(ECC_Camera, /*bTraceComplex*/ false, Hit);
-	}
-
-	if (!bHit)
+	if (!GetWalkableHitUnderCursor(Hit))
 	{
 		if (bPrintDebug && GEngine)
 		{
-			GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Red, TEXT("No hit under cursor"));
+			GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange, TEXT("바닥만 클릭 이동 가능"));
 		}
 		return;
 	}
 
 	Destination = Hit.Location;
-	bHasDestination = true;
+	bDestinationRequiresDirectMove = IsStairSurfaceHit(Hit);
 
-	// Spawn an optional click-move indicator on fresh clicks (and when debug is requested).
+	if (!bDestinationRequiresDirectMove && GetPawn())
+	{
+		const float ZDelta = FMath::Abs(Destination.Z - GetPawn()->GetActorLocation().Z);
+		if (ZDelta > 40.f)
+		{
+			bDestinationRequiresDirectMove = true;
+		}
+	}
+
+	if (!bDestinationRequiresDirectMove)
+	{
+		const FVector PreSnapDestination = Destination;
+		SnapDestinationToNavMesh(Destination);
+		if (FVector::Dist(Destination, PreSnapDestination) > 120.f
+			|| FMath::Abs(Destination.Z - PreSnapDestination.Z) > 50.f)
+		{
+			Destination = PreSnapDestination;
+			bDestinationRequiresDirectMove = true;
+		}
+	}
+
+	bHasDestination = true;
+	RefreshNavPath();
+
 	if (bPrintDebug)
 	{
 		SpawnClickMoveIndicator(Destination);
@@ -300,6 +465,441 @@ void ANovaClickMovePlayerController::UpdateDestinationUnderCursor(bool bPrintDeb
 			FString::Printf(TEXT("Move to: X=%.0f Y=%.0f Z=%.0f"), Destination.X, Destination.Y, Destination.Z)
 		);
 	}
+}
+
+bool ANovaClickMovePlayerController::IsWalkableSurfaceHit(const FHitResult& Hit, const float MinNormalZ)
+{
+	const AActor* Actor = Hit.GetActor();
+	if (Actor)
+	{
+		const FString ActorName = Actor->GetName();
+		const FString ClassName = Actor->GetClass()->GetName();
+
+		auto NameHas = [](const FString& Haystack, const TCHAR* Needle) -> bool
+		{
+			return Haystack.Contains(Needle, ESearchCase::IgnoreCase);
+		};
+
+		if (NameHas(ActorName, TEXT("Wall"))
+			|| NameHas(ActorName, TEXT("Railing"))
+			|| NameHas(ActorName, TEXT("WallCover"))
+			|| NameHas(ActorName, TEXT("WallTrim"))
+			|| NameHas(ActorName, TEXT("Ceiling")))
+		{
+			return false;
+		}
+
+		const bool bNamedFloor = NameHas(ActorName, TEXT("Floor"))
+			|| NameHas(ActorName, TEXT("MOD_Floor"))
+			|| NameHas(ActorName, TEXT("MOD_Stairs"))
+			|| NameHas(ActorName, TEXT("Ground"))
+			|| NameHas(ActorName, TEXT("Terrain"))
+			|| NameHas(ActorName, TEXT("Tile"))
+			|| NameHas(ActorName, TEXT("Stair"))
+			|| NameHas(ActorName, TEXT("Step"))
+			|| NameHas(ClassName, TEXT("Floor"))
+			|| NameHas(ClassName, TEXT("Stair"));
+
+		const float MinNormal = bNamedFloor ? FMath::Min(MinNormalZ, 0.42f) : MinNormalZ;
+
+		if (!bNamedFloor)
+		{
+			if (NameHas(ActorName, TEXT("Door"))
+				|| NameHas(ActorName, TEXT("Arch"))
+				|| NameHas(ActorName, TEXT("Chain"))
+				|| NameHas(ActorName, TEXT("Column"))
+				|| NameHas(ActorName, TEXT("Pillar"))
+				|| NameHas(ActorName, TEXT("Roof"))
+				|| NameHas(ActorName, TEXT("Beam"))
+				|| (NameHas(ClassName, TEXT("COMP")) && !NameHas(ActorName, TEXT("Stair")))
+				|| (NameHas(ActorName, TEXT("COMP")) && !NameHas(ActorName, TEXT("Stair"))))
+			{
+				return false;
+			}
+		}
+
+		if (Hit.Normal.Z >= MinNormal)
+		{
+			return true;
+		}
+
+		if (bNamedFloor)
+		{
+			return true;
+		}
+	}
+	else if (Hit.Normal.Z >= MinNormalZ)
+	{
+		return true;
+	}
+
+	if (Actor)
+	{
+		const FString ActorName = Actor->GetName();
+		const FString ClassName = Actor->GetClass()->GetName();
+		auto NameHas = [](const FString& Haystack, const TCHAR* Needle) -> bool
+		{
+			return Haystack.Contains(Needle, ESearchCase::IgnoreCase);
+		};
+
+		if (NameHas(ActorName, TEXT("Floor"))
+			|| NameHas(ActorName, TEXT("MOD_Floor"))
+			|| NameHas(ActorName, TEXT("Ground"))
+			|| NameHas(ActorName, TEXT("Terrain"))
+			|| NameHas(ClassName, TEXT("Floor")))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool ANovaClickMovePlayerController::IsStairSurfaceHit(const FHitResult& Hit)
+{
+	const AActor* Actor = Hit.GetActor();
+	if (!Actor)
+	{
+		return false;
+	}
+
+	const FString ActorName = Actor->GetName();
+	const FString ClassName = Actor->GetClass()->GetName();
+
+	auto NameHas = [](const FString& Haystack, const TCHAR* Needle) -> bool
+	{
+		return Haystack.Contains(Needle, ESearchCase::IgnoreCase);
+	};
+
+	return NameHas(ActorName, TEXT("Stair"))
+		|| NameHas(ActorName, TEXT("MOD_Stairs"))
+		|| NameHas(ActorName, TEXT("stairs"))
+		|| NameHas(ClassName, TEXT("Stair"))
+		|| NameHas(ClassName, TEXT("stairs"));
+}
+
+bool ANovaClickMovePlayerController::ShouldUseNavMeshPath(
+	const APawn* InPawn,
+	const UNavigationSystemV1* NavSys) const
+{
+	if (!InPawn || !NavSys || bDestinationRequiresDirectMove)
+	{
+		return false;
+	}
+
+	FNavLocation PawnNav;
+	FNavLocation DestNav;
+	const FVector Extent(NavProjectionExtent, NavProjectionExtent, NavProjectionVerticalExtent);
+
+	const bool bPawnOnNav = NavSys->ProjectPointToNavigation(InPawn->GetActorLocation(), PawnNav, Extent);
+	const bool bDestOnNav = NavSys->ProjectPointToNavigation(Destination, DestNav, Extent);
+	if (!bPawnOnNav || !bDestOnNav)
+	{
+		return false;
+	}
+
+	if (FMath::Abs(DestNav.Location.Z - Destination.Z) > 60.f)
+	{
+		return false;
+	}
+
+	return true;
+}
+
+bool ANovaClickMovePlayerController::ProjectCursorToWalkablePoint(FVector& InOutWorldPoint, FHitResult& OutHit) const
+{
+	const UWorld* World = GetWorld();
+	const APawn* P = GetPawn();
+	if (!World)
+	{
+		return false;
+	}
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(NovaClickMoveWalkableDown), false, P);
+	const float ReferenceZ = P ? P->GetActorLocation().Z : InOutWorldPoint.Z;
+	const float TraceTopZ = FMath::Max(InOutWorldPoint.Z, ReferenceZ) + ClickMoveVerticalTraceUp;
+	const FVector TraceStart(InOutWorldPoint.X, InOutWorldPoint.Y, TraceTopZ);
+	const FVector TraceEnd(InOutWorldPoint.X, InOutWorldPoint.Y, InOutWorldPoint.Z - ClickMoveVerticalTraceDown);
+
+	auto TraceDownOnChannel = [&](const ECollisionChannel Channel) -> bool
+	{
+		TArray<FHitResult> Hits;
+		if (!World->LineTraceMultiByChannel(Hits, TraceStart, TraceEnd, Channel, Params))
+		{
+			return false;
+		}
+
+		Hits.Sort([](const FHitResult& A, const FHitResult& B)
+		{
+			return A.Distance < B.Distance;
+		});
+
+		for (const FHitResult& Hit : Hits)
+		{
+			if (IsWalkableSurfaceHit(Hit, WalkableMinNormalZ))
+			{
+				OutHit = Hit;
+				InOutWorldPoint = Hit.Location;
+				return true;
+			}
+		}
+
+		return false;
+	};
+
+	return TraceDownOnChannel(ECC_WorldStatic)
+		|| TraceDownOnChannel(ECC_Visibility)
+		|| TraceDownOnChannel(ECC_Camera);
+}
+
+bool ANovaClickMovePlayerController::FindWalkableHitOnCameraRay(const FVector& PlanePoint, FHitResult& OutHit) const
+{
+	const UWorld* World = GetWorld();
+	const APawn* P = GetPawn();
+	if (!World)
+	{
+		return false;
+	}
+
+	FVector WorldOrigin;
+	FVector WorldDirection;
+	if (!DeprojectMousePositionToWorld(WorldOrigin, WorldDirection))
+	{
+		return false;
+	}
+
+	const FVector TraceEnd = WorldOrigin + WorldDirection * ClickMoveTraceDistance;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(NovaClickMoveWalkableCam), false, P);
+
+	float BestRayDistance = TNumericLimits<float>::Max();
+	bool bFound = false;
+
+	auto TraceChannel = [&](const ECollisionChannel Channel) -> void
+	{
+		TArray<FHitResult> Hits;
+		if (!World->LineTraceMultiByChannel(Hits, WorldOrigin, TraceEnd, Channel, Params))
+		{
+			return;
+		}
+
+		Hits.Sort([](const FHitResult& A, const FHitResult& B)
+		{
+			return A.Distance < B.Distance;
+		});
+
+		for (const FHitResult& Hit : Hits)
+		{
+			if (!IsWalkableSurfaceHit(Hit, WalkableMinNormalZ))
+			{
+				continue;
+			}
+
+			const float XYSlop = FVector2D::Distance(
+				FVector2D(Hit.ImpactPoint.X, Hit.ImpactPoint.Y),
+				FVector2D(PlanePoint.X, PlanePoint.Y));
+			if (XYSlop > ClickMoveMaxXYSlop)
+			{
+				continue;
+			}
+
+			if (Hit.Distance < BestRayDistance)
+			{
+				BestRayDistance = Hit.Distance;
+				OutHit = Hit;
+				bFound = true;
+			}
+		}
+	};
+
+	TraceChannel(ECC_WorldStatic);
+	TraceChannel(ECC_Visibility);
+	TraceChannel(ECC_Camera);
+
+	return bFound;
+}
+
+bool ANovaClickMovePlayerController::GetWalkableHitUnderCursor(FHitResult& OutHit) const
+{
+	const UWorld* World = GetWorld();
+	const APawn* P = GetPawn();
+	if (!World)
+	{
+		return false;
+	}
+
+	FVector WorldOrigin;
+	FVector WorldDirection;
+	if (!DeprojectMousePositionToWorld(WorldOrigin, WorldDirection))
+	{
+		return false;
+	}
+
+	if (FMath::IsNearlyZero(WorldDirection.Z))
+	{
+		return false;
+	}
+
+	const float PlaneZ = P ? P->GetActorLocation().Z : WorldOrigin.Z;
+	const float T = (PlaneZ - WorldOrigin.Z) / WorldDirection.Z;
+	if (T <= 0.f)
+	{
+		return false;
+	}
+
+	const FVector PlanePoint = WorldOrigin + WorldDirection * T;
+
+	// 계단·상층 바닥: 카메라 레이로 보이는 면 우선 (수직 트레이스만 쓰면 아래층 바닥이 잡힘)
+	if (FindWalkableHitOnCameraRay(PlanePoint, OutHit))
+	{
+		return true;
+	}
+
+	FVector FallbackPoint = PlanePoint;
+	return ProjectCursorToWalkablePoint(FallbackPoint, OutHit);
+}
+
+bool ANovaClickMovePlayerController::SnapDestinationToNavMesh(FVector& InOutLocation) const
+{
+	const UWorld* World = GetWorld();
+	if (!World || !bUseNavMeshPathfinding)
+	{
+		return true;
+	}
+
+	const UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World);
+	if (!NavSys)
+	{
+		return true;
+	}
+
+	FNavLocation Projected;
+	const FVector Extent(NavProjectionExtent, NavProjectionExtent, NavProjectionVerticalExtent);
+	if (NavSys->ProjectPointToNavigation(InOutLocation, Projected, Extent))
+	{
+		InOutLocation = Projected.Location;
+	}
+
+	return true;
+}
+
+void ANovaClickMovePlayerController::RefreshNavPath()
+{
+	NavPathPoints.Reset();
+	NavPathIndex = 0;
+
+	const APawn* P = GetPawn();
+	UWorld* World = GetWorld();
+	if (!P || !World || !bUseNavMeshPathfinding)
+	{
+		NavPathPoints.Add(Destination);
+		return;
+	}
+
+	const UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(World);
+	if (!NavSys || !ShouldUseNavMeshPath(P, NavSys))
+	{
+		NavPathPoints.Add(Destination);
+		return;
+	}
+
+	FNavLocation DestNav;
+	const FVector Extent(NavProjectionExtent, NavProjectionExtent, NavProjectionVerticalExtent);
+	if (!NavSys->ProjectPointToNavigation(Destination, DestNav, Extent))
+	{
+		NavPathPoints.Add(Destination);
+		return;
+	}
+
+	UNavigationPath* Path = NavSys->FindPathToLocationSynchronously(
+		World,
+		P->GetActorLocation(),
+		DestNav.Location,
+		const_cast<APawn*>(P)
+	);
+
+	if (Path && Path->IsValid() && Path->PathPoints.Num() > 1)
+	{
+		const FVector& PathEnd = Path->PathPoints.Last();
+		if (FVector::Dist(PathEnd, Destination) > 150.f
+			|| FMath::Abs(PathEnd.Z - Destination.Z) > 80.f)
+		{
+			NavPathPoints.Add(Destination);
+			return;
+		}
+
+		NavPathPoints = Path->PathPoints;
+		NavPathIndex = 1;
+	}
+	else
+	{
+		NavPathPoints.Add(Destination);
+	}
+}
+
+FVector ANovaClickMovePlayerController::GetActiveMoveTarget() const
+{
+	if (NavPathPoints.IsValidIndex(NavPathIndex))
+	{
+		return NavPathPoints[NavPathIndex];
+	}
+
+	return Destination;
+}
+
+void ANovaClickMovePlayerController::ApplyFixedOrbitCamera()
+{
+	APawn* P = GetPawn();
+	if (!P)
+	{
+		return;
+	}
+
+	USpringArmComponent* Arm = FindSpringArmOnPawn(P);
+	UCameraComponent* Cam = FindCameraOnPawn(P);
+
+	if (Arm)
+	{
+		// 시점 고정: 충돌·건축물·몹 근접 시 Arm 길이/각도가 변하지 않게
+		Arm->bDoCollisionTest = false;
+		Arm->bEnableCameraLag = false;
+		Arm->bUsePawnControlRotation = false;
+		Arm->bInheritPitch = false;
+		Arm->bInheritRoll = false;
+		Arm->bInheritYaw = false;
+		Arm->TargetArmLength = FixedOrbitArmLength;
+		Arm->SetRelativeRotation(FRotator(FixedOrbitPitch, CameraYawDegrees, 0.f));
+	}
+
+	if (Cam)
+	{
+		Cam->bUsePawnControlRotation = false;
+	}
+
+	const float FacingYaw = FMath::UnwindDegrees(CameraYawDegrees + CharacterFacingYawOffset);
+	P->SetActorRotation(FRotator(0.f, FacingYaw, 0.f));
+
+	if (ACharacter* C = Cast<ACharacter>(P))
+	{
+		if (USkeletalMeshComponent* SkMesh = C->GetMesh())
+		{
+			if (bUseMedievalKnightVisual)
+			{
+				SkMesh->SetRelativeLocation(KnightMeshRelativeLocation);
+				SkMesh->SetRelativeRotation(KnightMeshRelativeRotation);
+			}
+			else
+			{
+				FRotator MeshRel = SkMesh->GetRelativeRotation();
+				if (!FMath::IsNearlyZero(MeshRel.Yaw))
+				{
+					MeshRel.Yaw = 0.f;
+					SkMesh->SetRelativeRotation(MeshRel);
+				}
+			}
+		}
+	}
+
+	SetControlRotation(FRotator(0.f, 0.f, 0.f));
 }
 
 void ANovaClickMovePlayerController::SpawnClickMoveIndicator(const FVector& WorldLocation)
@@ -339,20 +939,94 @@ void ANovaClickMovePlayerController::SpawnClickMoveIndicator(const FVector& Worl
 	UE_LOG(LogTemp, Display, TEXT("NOVA ClickMoveIndicatorFx has unsupported type: %s"), *ClickMoveIndicatorFx->GetClass()->GetName());
 }
 
-void ANovaClickMovePlayerController::OnVPressed()
+void ANovaClickMovePlayerController::OnJumpPressed()
 {
-	UE_LOG(LogTemp, Display, TEXT("NOVA V Pressed. Pawn=%s"),
-		GetPawn() ? *GetPawn()->GetClass()->GetName() : TEXT("None"));
+	if (IsDialogueActive())
+	{
+		return;
+	}
 
-	// V: toggle control mode (ClickMove <-> WASD)
-	const ENovaControlMode NewMode =
-		(ControlMode == ENovaControlMode::ClickMove) ? ENovaControlMode::WASD : ENovaControlMode::ClickMove;
+	if (ACharacter* C = Cast<ACharacter>(GetPawn()))
+	{
+		C->Jump();
+	}
+}
 
-	SetControlMode(NewMode);
+void ANovaClickMovePlayerController::PerformMeleeAttack()
+{
+	if (IsDialogueActive())
+	{
+		return;
+	}
+
+	ACharacter* PlayerCharacter = Cast<ACharacter>(GetPawn());
+	if (!PlayerCharacter || !GetWorld())
+	{
+		return;
+	}
+
+	const float Now = GetWorld()->GetTimeSeconds();
+	if (Now - LastMeleeAttackTime < MeleeAttackCooldown)
+	{
+		return;
+	}
+	LastMeleeAttackTime = Now;
+
+	const FVector Origin = PlayerCharacter->GetActorLocation() + FVector(0.0f, 0.0f, 50.0f);
+	const FVector End = Origin + PlayerCharacter->GetActorForwardVector() * MeleeAttackRange;
+
+	FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(NovaMeleeAttack), false, PlayerCharacter);
+	FHitResult Hit;
+	const bool bHit = GetWorld()->SweepSingleByChannel(
+		Hit,
+		Origin,
+		End,
+		FQuat::Identity,
+		ECC_Pawn,
+		FCollisionShape::MakeSphere(MeleeAttackRadius),
+		QueryParams);
+
+	if (!bHit || !Hit.GetActor())
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 0.6f, FColor::Silver, TEXT("근접 공격 빗나감 (V)"));
+		}
+		return;
+	}
+
+	AActor* Target = Hit.GetActor();
+	if (Target == PlayerCharacter)
+	{
+		return;
+	}
+
+	UGameplayStatics::ApplyDamage(
+		Target,
+		MeleeAttackDamage,
+		this,
+		PlayerCharacter,
+		nullptr);
+
+	const bool bTargetGroggy = UNovaParagonGruxBossComponent::IsActorGroggy(Target);
+	if (GEngine)
+	{
+		const FString GroggyNote = bTargetGroggy ? TEXT(" [그로기 추가 대미지]") : TEXT("");
+		GEngine->AddOnScreenDebugMessage(
+			-1,
+			0.8f,
+			bTargetGroggy ? FColor::Yellow : FColor::White,
+			FString::Printf(TEXT("근접 공격 → %s (%.0f)%s"), *Target->GetName(), MeleeAttackDamage, *GroggyNote));
+	}
 }
 
 void ANovaClickMovePlayerController::OnDashPressed()
 {
+	if (IsDialogueActive())
+	{
+		return;
+	}
+
 	ACharacter* C = Cast<ACharacter>(GetPawn());
 	if (!C)
 	{
@@ -379,13 +1053,6 @@ void ANovaClickMovePlayerController::OnDashPressed()
 				Dir = Dir.GetSafeNormal();
 			}
 		}
-	}
-
-	if (Dir.IsNearlyZero())
-	{
-		Dir = C->GetLastMovementInputVector();
-		Dir.Z = 0.f;
-		Dir = Dir.GetSafeNormal();
 	}
 
 	if (Dir.IsNearlyZero())
@@ -430,89 +1097,6 @@ static UCameraComponent* FindCameraOnPawn(APawn* P)
 	return nullptr;
 }
 
-void ANovaClickMovePlayerController::ApplyTopDownCamera()
-{
-	APawn* P = GetPawn();
-	USpringArmComponent* Arm = FindSpringArmOnPawn(P);
-	UCameraComponent* Cam = FindCameraOnPawn(P);
-	if (!Arm || !Cam)
-	{
-		UE_LOG(LogTemp, Display, TEXT("NOVA ApplyTopDownCamera failed: Arm=%s Cam=%s Pawn=%s"),
-			Arm ? *Arm->GetName() : TEXT("None"),
-			Cam ? *Cam->GetName() : TEXT("None"),
-			P ? *P->GetClass()->GetName() : TEXT("None"));
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("No SpringArm/Camera found on Pawn"));
-		}
-		return;
-	}
-
-	Arm->TargetArmLength = 1000.0f;
-	Arm->SetRelativeRotation(FRotator(-45.0f, 0.0f, 0.0f));
-	Arm->bUsePawnControlRotation = false;
-	Arm->bInheritPitch = false;
-	Arm->bInheritRoll = false;
-	Arm->bInheritYaw = false;
-	Arm->bDoCollisionTest = false;
-
-	Cam->bUsePawnControlRotation = false;
-
-	// For top-down, lock control yaw so WASD doesn't feel "diagonal" due to leftover controller rotation.
-	SetControlRotation(FRotator(0.f, 0.f, 0.f));
-}
-
-void ANovaClickMovePlayerController::MoveForward(float Value)
-{
-	if (ControlMode != ENovaControlMode::WASD || FMath::IsNearlyZero(Value))
-	{
-		return;
-	}
-
-	APawn* P = GetPawn();
-	if (!P)
-	{
-		return;
-	}
-
-	// In top-down mode, use world axes to keep movement consistent.
-	if (bIsTopDownCamera)
-	{
-		P->AddMovementInput(FVector::ForwardVector, Value);
-		return;
-	}
-
-	const FRotator ControlRot = GetControlRotation();
-	const FRotator YawRot(0.f, ControlRot.Yaw, 0.f);
-	const FVector Forward = FRotationMatrix(YawRot).GetUnitAxis(EAxis::X);
-	P->AddMovementInput(Forward, Value);
-}
-
-void ANovaClickMovePlayerController::MoveRight(float Value)
-{
-	if (ControlMode != ENovaControlMode::WASD || FMath::IsNearlyZero(Value))
-	{
-		return;
-	}
-
-	APawn* P = GetPawn();
-	if (!P)
-	{
-		return;
-	}
-
-	if (bIsTopDownCamera)
-	{
-		P->AddMovementInput(FVector::RightVector, Value);
-		return;
-	}
-
-	const FRotator ControlRot = GetControlRotation();
-	const FRotator YawRot(0.f, ControlRot.Yaw, 0.f);
-	const FVector Right = FRotationMatrix(YawRot).GetUnitAxis(EAxis::Y);
-	P->AddMovementInput(Right, Value);
-}
-
 bool ANovaClickMovePlayerController::SwitchSecondaryWeapon(ENovaVoiceCommand WeaponCommand)
 {
 	if (WeaponCommand != ENovaVoiceCommand::Bow
@@ -537,7 +1121,91 @@ bool ANovaClickMovePlayerController::SwitchSecondaryWeapon(ENovaVoiceCommand Wea
 	}
 
 	OnSecondaryWeaponChanged(WeaponCommand);
+	NotifyCounterAfterWeaponSwitch(WeaponCommand);
 	return true;
+}
+
+void ANovaClickMovePlayerController::ApplyMedievalKnightVisual(APawn* InPawn)
+{
+	if (!bUseMedievalKnightVisual || !InPawn)
+	{
+		return;
+	}
+
+	ACharacter* ControlledCharacter = Cast<ACharacter>(InPawn);
+	if (!ControlledCharacter)
+	{
+		return;
+	}
+
+	static const FSoftObjectPath KnightMeshPath(TEXT("/Game/MedievalKnightAssets/Meshes/SKM_MKnight.SKM_MKnight"));
+	static const FSoftObjectPath KnightAnimPath(TEXT("/Game/MedievalKnightAssets/Animation/ABP_MKnight.ABP_MKnight_C"));
+
+	USkeletalMesh* KnightMesh = Cast<USkeletalMesh>(KnightMeshPath.TryLoad());
+	UClass* KnightAnimClass = Cast<UClass>(KnightAnimPath.TryLoad());
+
+	if (!KnightMesh)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Nova: SKM_MKnight load failed at %s"), *KnightMeshPath.ToString());
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 8.f, FColor::Red, TEXT("Knight mesh load failed — check Content/MedievalKnightAssets"));
+		}
+		return;
+	}
+
+	if (!KnightAnimClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Nova: ABP_MKnight load failed at %s"), *KnightAnimPath.ToString());
+	}
+
+	TArray<USkeletalMeshComponent*> SkMeshes;
+	ControlledCharacter->GetComponents<USkeletalMeshComponent>(SkMeshes);
+	if (USkeletalMeshComponent* PrimaryMesh = ControlledCharacter->GetMesh())
+	{
+		SkMeshes.AddUnique(PrimaryMesh);
+	}
+
+	int32 AppliedCount = 0;
+	for (USkeletalMeshComponent* SkMesh : SkMeshes)
+	{
+		if (!SkMesh)
+		{
+			continue;
+		}
+
+		SkMesh->SetSkeletalMesh(KnightMesh);
+		SkMesh->SetRelativeLocation(KnightMeshRelativeLocation);
+		SkMesh->SetRelativeRotation(KnightMeshRelativeRotation);
+
+		if (KnightAnimClass)
+		{
+			SkMesh->SetAnimInstanceClass(KnightAnimClass);
+		}
+
+		SkMesh->InitAnim(true);
+		SkMesh->MarkRenderStateDirty();
+		SkMesh->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+		++AppliedCount;
+
+		UE_LOG(
+			LogTemp,
+			Display,
+			TEXT("Nova: Knight visual on %s.%s (mesh=%s anim=%s)"),
+			*ControlledCharacter->GetName(),
+			*SkMesh->GetName(),
+			*KnightMesh->GetName(),
+			KnightAnimClass ? *KnightAnimClass->GetName() : TEXT("none"));
+	}
+
+	if (AppliedCount > 0 && GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(
+			-1,
+			5.f,
+			FColor::Green,
+			FString::Printf(TEXT("Knight applied: SKM_MKnight (%d mesh component(s))"), AppliedCount));
+	}
 }
 
 void ANovaClickMovePlayerController::ApplyWeaponVisualToPawn(ENovaVoiceCommand WeaponCommand)
@@ -566,12 +1234,43 @@ void ANovaClickMovePlayerController::ApplyWeaponVisualToPawn(ENovaVoiceCommand W
 	}
 }
 
-void ANovaClickMovePlayerController::OpenBossCounterWindow(ENovaBossCounterType CounterType)
+bool ANovaClickMovePlayerController::OpenBossCounterWindow(ENovaBossCounterType CounterType, AActor* BossSource)
 {
-	if (CombatVoiceGateComponent)
+	if (!CombatVoiceGateComponent)
 	{
-		CombatVoiceGateComponent->OpenCounterWindow(CounterType);
+		return false;
 	}
+
+	return CombatVoiceGateComponent->OpenCounterWindow(CounterType, BossSource);
+}
+
+bool ANovaClickMovePlayerController::TryOpenDebugCounterWindow(ENovaBossCounterType CounterType)
+{
+	const APawn* ControlledPawn = GetPawn();
+	if (!ControlledPawn || !CombatVoiceGateComponent)
+	{
+		return false;
+	}
+
+	AActor* GruxBoss = UNovaParagonGruxBossComponent::FindNearestParagonGruxBoss(
+		GetWorld(),
+		ControlledPawn->GetActorLocation(),
+		CombatVoiceGateComponent->MaxCounterBossDistance);
+
+	if (!GruxBoss)
+	{
+		if (GEngine)
+		{
+			GEngine->AddOnScreenDebugMessage(
+				-1,
+				2.0f,
+				FColor::Orange,
+				TEXT("상쇄 테스트: Paragon Grux 보스가 근처에 없습니다"));
+		}
+		return false;
+	}
+
+	return OpenBossCounterWindow(CounterType, GruxBoss);
 }
 
 void ANovaClickMovePlayerController::OnVoiceCommandRecognized(const FNovaVoiceCommandResult& CommandResult)
@@ -630,6 +1329,29 @@ void ANovaClickMovePlayerController::RequestCompanionHelp()
 	OnCompanionHelpVisualRequested();
 }
 
+void ANovaClickMovePlayerController::OnCounterWindowOpened(ENovaBossCounterType CounterType)
+{
+	const ENovaVoiceCommand RequiredWeapon = UNovaCombatVoiceGateComponent::GetRequiredWeaponForPattern(CounterType);
+	OnBossCounterWindowOpened(CounterType, RequiredWeapon);
+}
+
+void ANovaClickMovePlayerController::NotifyCounterAfterWeaponSwitch(ENovaVoiceCommand WeaponCommand)
+{
+	if (!CombatVoiceGateComponent)
+	{
+		return;
+	}
+
+	FString RejectReason;
+	if (!CombatVoiceGateComponent->TryCounterWithEquippedWeapon(WeaponCommand, RejectReason))
+	{
+		if (GEngine && !RejectReason.IsEmpty())
+		{
+			GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange, RejectReason);
+		}
+	}
+}
+
 void ANovaClickMovePlayerController::OnCounterSucceeded(ENovaBossCounterType CounterType, ENovaVoiceCommand Command)
 {
 	if (GEngine)
@@ -639,9 +1361,9 @@ void ANovaClickMovePlayerController::OnCounterSucceeded(ENovaBossCounterType Cou
 			2.0f,
 			FColor::Emerald,
 			FString::Printf(
-				TEXT("Boss counter success: pattern=%d weapon=%s"),
-				static_cast<int32>(CounterType),
-				*NovaVoiceDebug::CommandToDisplayName(Command)
+				TEXT("상쇄 성공: %s - %s"),
+				*UNovaCombatVoiceGateComponent::GetPatternFullLabel(CounterType),
+				*UNovaCombatVoiceGateComponent::GetRequiredWeaponCounterLabel(CounterType)
 			)
 		);
 	}
@@ -654,28 +1376,292 @@ void ANovaClickMovePlayerController::OnWeaponKey2() { HandleWeaponSwitchInput(EN
 void ANovaClickMovePlayerController::OnWeaponKey3() { HandleWeaponSwitchInput(ENovaVoiceCommand::Spear); }
 void ANovaClickMovePlayerController::OnWeaponKey4() { HandleWeaponSwitchInput(ENovaVoiceCommand::Shield); }
 
-void ANovaClickMovePlayerController::OnDebugCounterKeyF5() { OpenBossCounterWindow(ENovaBossCounterType::LaserShield); }
-void ANovaClickMovePlayerController::OnDebugCounterKeyF6() { OpenBossCounterWindow(ENovaBossCounterType::SpaceScythe); }
-void ANovaClickMovePlayerController::OnDebugCounterKeyF7() { OpenBossCounterWindow(ENovaBossCounterType::SummonBow); }
-void ANovaClickMovePlayerController::OnDebugCounterKeyF8() { OpenBossCounterWindow(ENovaBossCounterType::DebrisHammer); }
+void ANovaClickMovePlayerController::OnDebugCounterKeyF5() { TryOpenDebugCounterWindow(ENovaBossCounterType::Pattern_1); }
+void ANovaClickMovePlayerController::OnDebugCounterKeyF6() { TryOpenDebugCounterWindow(ENovaBossCounterType::Pattern_2); }
+void ANovaClickMovePlayerController::OnDebugCounterKeyF7() { TryOpenDebugCounterWindow(ENovaBossCounterType::Pattern_3); }
+void ANovaClickMovePlayerController::OnDebugCounterKeyF8() { TryOpenDebugCounterWindow(ENovaBossCounterType::Pattern_4); }
 
 
 void ANovaClickMovePlayerController::OnSkillQ()
 {
+	if (IsDialogueActive()) { return; }
 	BP_UseSkillQ(EquippedSecondaryWeapon);
 }
 
 void ANovaClickMovePlayerController::OnSkillW()
 {
+	if (IsDialogueActive()) { return; }
 	BP_UseSkillW(EquippedSecondaryWeapon);
 }
 
 void ANovaClickMovePlayerController::OnSkillE()
 {
+	if (IsDialogueActive()) { return; }
 	BP_UseSkillE(EquippedSecondaryWeapon);
 }
 
 void ANovaClickMovePlayerController::OnSkillR()
 {
+	if (IsDialogueActive()) { return; }
 	BP_UseSkillR(EquippedSecondaryWeapon);
+}
+
+bool ANovaClickMovePlayerController::IsFirstPersonDungeonPawn() const
+{
+	const APawn* P = GetPawn();
+	if (!P)
+	{
+		return false;
+	}
+
+	const FString ClassName = P->GetClass()->GetName();
+	return ClassName.Contains(TEXT("FirstPersonCharacter"));
+}
+
+bool ANovaClickMovePlayerController::InputKey(const FInputKeyEventArgs& EventArgs)
+{
+	const FKey& Key = EventArgs.Key;
+
+	// 마우스 이동/휠로 시점이 돌아가지 않도록 차단
+	if (Key == EKeys::MouseX || Key == EKeys::MouseY || Key == EKeys::Mouse2D
+		|| Key == EKeys::MouseWheelAxis)
+	{
+		return true;
+	}
+
+	if (Key == EKeys::RightMouseButton)
+	{
+		if (EventArgs.Event == IE_Pressed)
+		{
+			OnRightClickPressed();
+		}
+		else if (EventArgs.Event == IE_Released)
+		{
+			OnRightClickReleased();
+		}
+		return true;
+	}
+
+	if (Key == EKeys::LeftMouseButton && EventArgs.Event == IE_Pressed)
+	{
+		OnDashPressed();
+		return true;
+	}
+
+	// A/D: 시점 전용 — PlayerTick에서 bCameraYawLeft/Right로 회전
+	if (Key == EKeys::A)
+	{
+		if (EventArgs.Event == IE_Pressed)
+		{
+			bCameraYawLeft = true;
+		}
+		else if (EventArgs.Event == IE_Released)
+		{
+			bCameraYawLeft = false;
+		}
+		return true;
+	}
+	if (Key == EKeys::D)
+	{
+		if (EventArgs.Event == IE_Pressed)
+		{
+			bCameraYawRight = true;
+		}
+		else if (EventArgs.Event == IE_Released)
+		{
+			bCameraYawRight = false;
+		}
+		return true;
+	}
+
+	if (EventArgs.Event == IE_Pressed)
+	{
+		if (Key == EKeys::Q) { OnSkillQ(); return true; }
+		if (Key == EKeys::W) { OnSkillW(); return true; }
+		if (Key == EKeys::E) { OnSkillE(); return true; }
+		if (Key == EKeys::R) { OnSkillR(); return true; }
+		if (Key == EKeys::F) { TryStartNpcDialogue(); return true; }
+		if (Key == EKeys::G) { EndDialogueMode(); return true; }
+		if (Key == EKeys::SpaceBar) { OnJumpPressed(); return true; }
+		if (Key == EKeys::V) { PerformMeleeAttack(); return true; }
+
+		// Pawn 기본 입력(이동/점프) 차단 — Q/W/E/R/F/G/Space/V/A/D/RMB는 위에서 처리
+		if (Key == EKeys::S || Key == EKeys::Up || Key == EKeys::Down
+			|| Key == EKeys::Left || Key == EKeys::Right
+			|| Key == EKeys::LeftShift || Key == EKeys::LeftControl)
+		{
+			return true;
+		}
+	}
+
+	return Super::InputKey(EventArgs);
+}
+
+void ANovaClickMovePlayerController::TryStartNpcDialogue()
+{
+	if (IsDialogueActive())
+	{
+		return;
+	}
+
+	APawn* P = GetPawn();
+	if (!P || !GetWorld())
+	{
+		return;
+	}
+
+	const FVector Origin = P->GetActorLocation();
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(NovaNpcInteract), false, P);
+
+	TArray<FOverlapResult> Overlaps;
+	if (GetWorld()->OverlapMultiByChannel(
+		Overlaps,
+		Origin,
+		FQuat::Identity,
+		ECC_Pawn,
+		FCollisionShape::MakeSphere(NpcInteractRadius),
+		Params))
+	{
+		AActor* ClosestNpc = nullptr;
+		float ClosestDistSq = TNumericLimits<float>::Max();
+
+		for (const FOverlapResult& Result : Overlaps)
+		{
+			AActor* Candidate = Result.GetActor();
+			if (!Candidate || Candidate == P)
+			{
+				continue;
+			}
+
+			const FString ClassName = Candidate->GetClass()->GetName();
+			if (!ClassName.Contains(TEXT("bp_npc"), ESearchCase::IgnoreCase)
+				&& !ClassName.Contains(TEXT("NPC"), ESearchCase::IgnoreCase))
+			{
+				continue;
+			}
+
+			const float DistSq = FVector::DistSquared(Origin, Candidate->GetActorLocation());
+			if (DistSq < ClosestDistSq)
+			{
+				ClosestDistSq = DistSq;
+				ClosestNpc = Candidate;
+			}
+		}
+
+		if (ClosestNpc)
+		{
+			StartDialogueMode(ClosestNpc);
+			return;
+		}
+	}
+
+	FVector TraceStart = Origin + FVector(0.f, 0.f, 50.f);
+	FVector TraceEnd = TraceStart + P->GetActorForwardVector() * NpcInteractRadius;
+	FHitResult Hit;
+	if (GetWorld()->LineTraceSingleByChannel(Hit, TraceStart, TraceEnd, ECC_Visibility, Params))
+	{
+		AActor* HitActor = Hit.GetActor();
+		if (HitActor)
+		{
+			const FString ClassName = HitActor->GetClass()->GetName();
+			if (ClassName.Contains(TEXT("bp_npc"), ESearchCase::IgnoreCase)
+				|| ClassName.Contains(TEXT("NPC"), ESearchCase::IgnoreCase))
+			{
+				StartDialogueMode(HitActor);
+				return;
+			}
+		}
+	}
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Orange, TEXT("근처 NPC 없음 (F)"));
+	}
+}
+
+void ANovaClickMovePlayerController::TurnCamera(float AxisValue)
+{
+	if (FMath::IsNearlyZero(AxisValue))
+	{
+		return;
+	}
+
+	CameraYawDegrees = FMath::UnwindDegrees(CameraYawDegrees + AxisValue);
+}
+
+void ANovaClickMovePlayerController::ApplyCameraYaw(float DeltaTime)
+{
+	float TurnAxis = 0.0f;
+	if (bCameraYawLeft)
+	{
+		TurnAxis -= 1.0f;
+	}
+	if (bCameraYawRight)
+	{
+		TurnAxis += 1.0f;
+	}
+
+	if (!FMath::IsNearlyZero(TurnAxis))
+	{
+		TurnCamera(TurnAxis * CameraTurnSpeed * DeltaTime);
+	}
+}
+
+void ANovaClickMovePlayerController::StartDialogueMode(AActor* NpcActor)
+{
+	if (!DialogueWidgetClass)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Nova StartDialogueMode: DialogueWidgetClass missing"));
+		return;
+	}
+
+	ActiveDialogueNpc = NpcActor;
+
+	if (!ActiveDialogueWidget)
+	{
+		ActiveDialogueWidget = CreateWidget<UUserWidget>(this, DialogueWidgetClass);
+		if (ActiveDialogueWidget)
+		{
+			ActiveDialogueWidget->AddToViewport(100);
+		}
+	}
+
+	if (!ActiveDialogueWidget)
+	{
+		return;
+	}
+
+	SetIgnoreMoveInput(true);
+	SetIgnoreLookInput(true);
+
+	ApplyGameplayInputMode();
+
+	if (GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Green, TEXT("NPC 대화 시작 (G로 종료)"));
+	}
+}
+
+void ANovaClickMovePlayerController::EndDialogueMode()
+{
+	const bool bWasActive = IsDialogueActive();
+
+	if (ActiveDialogueWidget)
+	{
+		ActiveDialogueWidget->RemoveFromParent();
+		ActiveDialogueWidget = nullptr;
+	}
+
+	ActiveDialogueNpc = nullptr;
+	bIsHoldingMove = false;
+	bPrevGKeyDown = false;
+	bCameraYawLeft = false;
+	bCameraYawRight = false;
+	SetIgnoreMoveInput(false);
+	ApplyGameplayInputMode();
+
+	if (bWasActive && GEngine)
+	{
+		GEngine->AddOnScreenDebugMessage(-1, 1.5f, FColor::Silver, TEXT("NPC 대화 종료"));
+	}
 }

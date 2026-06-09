@@ -19,10 +19,14 @@ UENUM(BlueprintType)
 enum class ENovaBossCounterType : uint8
 {
 	None UMETA(DisplayName = "None"),
-	LaserShield UMETA(DisplayName = "Charge Rush"),
-	SpaceScythe UMETA(DisplayName = "AoE 45"),
-	SummonBow UMETA(DisplayName = "Projectile"),
-	DebrisHammer UMETA(DisplayName = "AoE 360")
+	/** 돌진(Pattern_1) → 방패 */
+	Pattern_1 UMETA(DisplayName = "Pattern 1 - Dash"),
+	/** 범위공격(Pattern_2) → 창 */
+	Pattern_2 UMETA(DisplayName = "Pattern 2 - Area Attack"),
+	/** 투사체(Pattern_3) → 활 */
+	Pattern_3 UMETA(DisplayName = "Pattern 3 - Projectile"),
+	/** 패턴_@ 미정(Pattern_4) → 검 */
+	Pattern_4 UMETA(DisplayName = "Pattern 4 - TBD")
 };
 
 USTRUCT(BlueprintType)

@@ -1,11 +1,12 @@
 #include "NovaBossPatternComponent.h"
 
-#include "NovaClickMovePlayerController.h"
-#include "NovaCombatVoiceGateComponent.h"
+#include "NovaFloatingHealthBarComponent.h"
+#include "NovaParagonGruxBossComponent.h"
 
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "Components/CapsuleComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
@@ -83,8 +84,8 @@ void UNovaBossPatternComponent::InitializeDefaultGruxPatterns()
 
 	AttackPatterns = {
 		{
-			TEXT("Boss_Charge"),
-			ENovaBossCounterType::LaserShield,
+			TEXT("Pattern_1_Dash"),
+			ENovaBossCounterType::Pattern_1,
 			1.5f,
 			1.4f,
 			28.0f,
@@ -94,8 +95,8 @@ void UNovaBossPatternComponent::InitializeDefaultGruxPatterns()
 			nullptr
 		},
 		{
-			TEXT("Boss_AoE45"),
-			ENovaBossCounterType::SpaceScythe,
+			TEXT("Pattern_2_AoE45"),
+			ENovaBossCounterType::Pattern_2,
 			1.6f,
 			1.3f,
 			32.0f,
@@ -105,8 +106,8 @@ void UNovaBossPatternComponent::InitializeDefaultGruxPatterns()
 			nullptr
 		},
 		{
-			TEXT("Boss_Projectile"),
-			ENovaBossCounterType::SummonBow,
+			TEXT("Pattern_3_Projectile"),
+			ENovaBossCounterType::Pattern_3,
 			1.4f,
 			1.5f,
 			22.0f,
@@ -116,8 +117,8 @@ void UNovaBossPatternComponent::InitializeDefaultGruxPatterns()
 			nullptr
 		},
 		{
-			TEXT("Boss_AoE360"),
-			ENovaBossCounterType::DebrisHammer,
+			TEXT("Pattern_4_AoE360"),
+			ENovaBossCounterType::Pattern_4,
 			1.7f,
 			1.6f,
 			38.0f,
@@ -139,7 +140,15 @@ void UNovaBossPatternComponent::BeginPlay()
 	}
 
 	EnsurePatternVisualMeshes();
-	BindPlayerCounterDelegate();
+
+	if (!EnsureGruxBossComponent())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("NovaBossPatternComponent: Paragon Grux 보스가 아니거나 NovaParagonGruxBossComponent가 없습니다. 비활성화합니다."));
+		return;
+	}
+
+	BindGruxCounterDelegate();
+	EnsureBossHealthBar();
 
 	if (bAutoStartOnBeginPlay)
 	{
@@ -150,7 +159,7 @@ void UNovaBossPatternComponent::BeginPlay()
 void UNovaBossPatternComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	HidePatternVisuals();
-	UnbindPlayerCounterDelegate();
+	UnbindGruxCounterDelegate();
 	Super::EndPlay(EndPlayReason);
 }
 
@@ -239,41 +248,100 @@ const FNovaBossAttackPattern* UNovaBossPatternComponent::GetActivePattern() cons
 	return &AttackPatterns[ActivePatternIndex];
 }
 
-void UNovaBossPatternComponent::BindPlayerCounterDelegate()
+UNovaParagonGruxBossComponent* UNovaBossPatternComponent::ResolveGruxBossComponent() const
 {
-	const APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0);
-	if (!PlayerController)
+	if (GruxBossComponent)
 	{
-		return;
+		return GruxBossComponent;
 	}
 
-	UNovaCombatVoiceGateComponent* VoiceGate = PlayerController->FindComponentByClass<UNovaCombatVoiceGateComponent>();
-	if (!VoiceGate)
-	{
-		return;
-	}
-
-	if (BoundVoiceGate.Get() == VoiceGate)
-	{
-		return;
-	}
-
-	UnbindPlayerCounterDelegate();
-	VoiceGate->OnCounterSucceeded.AddDynamic(this, &UNovaBossPatternComponent::HandleCounterSucceeded);
-	BoundVoiceGate = VoiceGate;
+	return GetOwner() ? GetOwner()->FindComponentByClass<UNovaParagonGruxBossComponent>() : nullptr;
 }
 
-void UNovaBossPatternComponent::UnbindPlayerCounterDelegate()
+bool UNovaBossPatternComponent::EnsureGruxBossComponent()
 {
-	if (UNovaCombatVoiceGateComponent* VoiceGate = BoundVoiceGate.Get())
+	AActor* Owner = GetOwner();
+	if (!Owner)
 	{
-		VoiceGate->OnCounterSucceeded.RemoveDynamic(this, &UNovaBossPatternComponent::HandleCounterSucceeded);
+		return false;
 	}
 
-	BoundVoiceGate.Reset();
+	const USkeletalMeshComponent* MeshComp = Owner->FindComponentByClass<USkeletalMeshComponent>();
+	const bool bHasGruxMesh = MeshComp && MeshComp->GetSkeletalMeshAsset()
+		&& MeshComp->GetSkeletalMeshAsset()->GetPathName().Contains(TEXT("ParagonGrux"), ESearchCase::IgnoreCase);
+
+	if (!UNovaParagonGruxBossComponent::IsParagonGruxBossActor(Owner) && !bHasGruxMesh)
+	{
+		return false;
+	}
+
+	GruxBossComponent = Owner->FindComponentByClass<UNovaParagonGruxBossComponent>();
+	if (!GruxBossComponent)
+	{
+		GruxBossComponent = NewObject<UNovaParagonGruxBossComponent>(Owner, TEXT("NovaParagonGruxBoss"));
+		Owner->AddInstanceComponent(GruxBossComponent);
+		GruxBossComponent->RegisterComponent();
+		UE_LOG(LogTemp, Warning, TEXT("NovaBossPatternComponent: NovaParagonGruxBossComponent를 런타임에 추가했습니다. Grux BP에 컴포넌트를 붙여 주세요."));
+	}
+
+	bGruxIntegrationReady = GruxBossComponent != nullptr;
+	return bGruxIntegrationReady;
 }
 
-void UNovaBossPatternComponent::HandleCounterSucceeded(ENovaBossCounterType CounterType, ENovaVoiceCommand Command)
+void UNovaBossPatternComponent::BindGruxCounterDelegate()
+{
+	UNovaParagonGruxBossComponent* GruxComponent = ResolveGruxBossComponent();
+	if (!GruxComponent)
+	{
+		return;
+	}
+
+	UnbindGruxCounterDelegate();
+	GruxComponent->OnGruxCounterSucceeded.AddDynamic(this, &UNovaBossPatternComponent::HandleGruxCounterSucceeded);
+}
+
+void UNovaBossPatternComponent::UnbindGruxCounterDelegate()
+{
+	if (UNovaParagonGruxBossComponent* GruxComponent = ResolveGruxBossComponent())
+	{
+		GruxComponent->OnGruxCounterSucceeded.RemoveDynamic(this, &UNovaBossPatternComponent::HandleGruxCounterSucceeded);
+	}
+}
+
+void UNovaBossPatternComponent::NotifyPatternTelegraph(const ENovaBossCounterType CounterType)
+{
+	if (UNovaParagonGruxBossComponent* GruxComponent = ResolveGruxBossComponent())
+	{
+		GruxComponent->RequestCounterWindow(CounterType);
+	}
+}
+
+void UNovaBossPatternComponent::EnsureBossHealthBar()
+{
+	if (!bAutoAddHealthBar)
+	{
+		return;
+	}
+
+	AActor* Owner = GetOwner();
+	if (!Owner)
+	{
+		return;
+	}
+
+	BossHealthBarComponent = Owner->FindComponentByClass<UNovaFloatingHealthBarComponent>();
+	if (!BossHealthBarComponent)
+	{
+		BossHealthBarComponent = NewObject<UNovaFloatingHealthBarComponent>(Owner, TEXT("NovaBossHealthBar"));
+		Owner->AddInstanceComponent(BossHealthBarComponent);
+		BossHealthBarComponent->RegisterComponent();
+	}
+
+	BossHealthBarComponent->ApplyBossHealthBarPreset(BossMaxHealth);
+	BossHealthBarComponent->ActivateHealthBar();
+}
+
+void UNovaBossPatternComponent::HandleGruxCounterSucceeded(ENovaBossCounterType CounterType, ENovaVoiceCommand Command)
 {
 	const FNovaBossAttackPattern* ActivePattern = GetActivePattern();
 	if (!ActivePattern || ActivePattern->CounterType != CounterType)
@@ -297,7 +365,7 @@ void UNovaBossPatternComponent::HandleCounterSucceeded(ENovaBossCounterType Coun
 			-1,
 			2.0f,
 			FColor::Emerald,
-			FString::Printf(TEXT("Grux pattern countered: %d"), static_cast<int32>(CounterType))
+			FString::Printf(TEXT("패턴 상쇄 성공 → 그로기 (Pattern %d)"), static_cast<int32>(CounterType))
 		);
 	}
 }
@@ -375,13 +443,7 @@ void UNovaBossPatternComponent::BeginTelegraph(const int32 PatternIndex)
 
 	if (Pattern.bOpensCounterWindow && Pattern.CounterType != ENovaBossCounterType::None)
 	{
-		if (APlayerController* PlayerController = UGameplayStatics::GetPlayerController(this, 0))
-		{
-			if (ANovaClickMovePlayerController* NovaController = Cast<ANovaClickMovePlayerController>(PlayerController))
-			{
-				NovaController->OpenBossCounterWindow(Pattern.CounterType);
-			}
-		}
+		NotifyPatternTelegraph(Pattern.CounterType);
 	}
 
 	OnPatternTelegraphStarted.Broadcast(Pattern.CounterType, PatternIndex);
@@ -427,7 +489,7 @@ void UNovaBossPatternComponent::ExecuteActivePattern()
 			bInArc = AngleDeg <= (Pattern->AttackArcDegrees * 0.5f);
 		}
 
-		if (Pattern->CounterType == ENovaBossCounterType::LaserShield)
+		if (Pattern->CounterType == ENovaBossCounterType::Pattern_1)
 		{
 			const FVector DashDirection = (PlayerLocation - BossLocation).GetSafeNormal2D();
 			if (!DashDirection.IsNearlyZero())
@@ -468,7 +530,14 @@ void UNovaBossPatternComponent::ExecuteActivePattern()
 void UNovaBossPatternComponent::EnterStaggered()
 {
 	CurrentState = ENovaBossPatternState::Staggered;
-	StateTimer = StaggerDuration;
+
+	float GroggyDuration = StaggerDuration;
+	if (const UNovaParagonGruxBossComponent* GruxComponent = ResolveGruxBossComponent())
+	{
+		GroggyDuration = GruxComponent->GroggyDurationSeconds;
+	}
+	StateTimer = GroggyDuration;
+
 	AdvancePatternIndex();
 
 	if (ACharacter* BossCharacter = GetOwnerCharacter())
@@ -482,6 +551,11 @@ void UNovaBossPatternComponent::EnterStaggered()
 
 void UNovaBossPatternComponent::UpdateIdle()
 {
+	if (UNovaParagonGruxBossComponent::IsActorGroggy(GetOwner()))
+	{
+		return;
+	}
+
 	if (!IsPlayerInAggroRange())
 	{
 		return;
@@ -498,6 +572,18 @@ void UNovaBossPatternComponent::UpdateIdle()
 
 void UNovaBossPatternComponent::UpdateChasing(const float DeltaTime)
 {
+	if (UNovaParagonGruxBossComponent::IsActorGroggy(GetOwner()))
+	{
+		if (ACharacter* BossCharacter = GetOwnerCharacter())
+		{
+			if (UCharacterMovementComponent* Movement = BossCharacter->GetCharacterMovement())
+			{
+				Movement->StopMovementImmediately();
+			}
+		}
+		return;
+	}
+
 	if (!IsPlayerInAggroRange())
 	{
 		CurrentState = ENovaBossPatternState::Idle;
@@ -586,7 +672,10 @@ void UNovaBossPatternComponent::TickComponent(
 		return;
 	}
 
-	BindPlayerCounterDelegate();
+	if (bGruxIntegrationReady)
+	{
+		BindGruxCounterDelegate();
+	}
 
 	switch (CurrentState)
 	{
@@ -714,7 +803,7 @@ void UNovaBossPatternComponent::UpdateTelegraphVisual(const float DeltaTime)
 
 	switch (Pattern->CounterType)
 	{
-	case ENovaBossCounterType::LaserShield:
+	case ENovaBossCounterType::Pattern_1:
 	{
 		const float LaneLength = Pattern->AttackRadius;
 		const FVector LaneCenter = GroundOrigin + Forward * (LaneLength * 0.5f);
@@ -727,7 +816,7 @@ void UNovaBossPatternComponent::UpdateTelegraphVisual(const float DeltaTime)
 		AimVisualMesh->SetVisibility(true);
 		break;
 	}
-	case ENovaBossCounterType::SpaceScythe:
+	case ENovaBossCounterType::Pattern_2:
 	{
 		const float HalfAngleRad = FMath::DegreesToRadians(Pattern->AttackArcDegrees * 0.5f);
 		const float WedgeWidth = 2.0f * Pattern->AttackRadius * FMath::Tan(HalfAngleRad);
@@ -742,7 +831,7 @@ void UNovaBossPatternComponent::UpdateTelegraphVisual(const float DeltaTime)
 		AreaVisualMesh->SetVisibility(true);
 		break;
 	}
-	case ENovaBossCounterType::SummonBow:
+	case ENovaBossCounterType::Pattern_3:
 	{
 		FVector TargetLocation = BossLocation + Forward * Pattern->AttackRadius;
 		if (PlayerPawn)
@@ -767,7 +856,7 @@ void UNovaBossPatternComponent::UpdateTelegraphVisual(const float DeltaTime)
 		ImpactVisualMesh->SetVisibility(true);
 		break;
 	}
-	case ENovaBossCounterType::DebrisHammer:
+	case ENovaBossCounterType::Pattern_4:
 	{
 		AreaVisualMesh->SetStaticMesh(NovaBossPatternVisual::LoadMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder")));
 		AreaVisualMesh->SetWorldLocation(GroundOrigin);
@@ -810,7 +899,7 @@ void UNovaBossPatternComponent::PlayExecuteVisual(const FNovaBossAttackPattern& 
 
 	switch (Pattern.CounterType)
 	{
-	case ENovaBossCounterType::LaserShield:
+	case ENovaBossCounterType::Pattern_1:
 	{
 		const float LaneLength = Pattern.AttackRadius;
 		const FVector LaneCenter = GetGroundLocationAt(BossLocation + Forward * (LaneLength * 0.5f));
@@ -821,7 +910,7 @@ void UNovaBossPatternComponent::PlayExecuteVisual(const FNovaBossAttackPattern& 
 		AimVisualMesh->SetVisibility(true);
 		break;
 	}
-	case ENovaBossCounterType::SpaceScythe:
+	case ENovaBossCounterType::Pattern_2:
 	{
 		const float HalfAngleRad = FMath::DegreesToRadians(Pattern.AttackArcDegrees * 0.5f);
 		const float WedgeWidth = 2.0f * Pattern.AttackRadius * FMath::Tan(HalfAngleRad);
@@ -837,7 +926,7 @@ void UNovaBossPatternComponent::PlayExecuteVisual(const FNovaBossAttackPattern& 
 		AreaVisualMesh->SetVisibility(true);
 		break;
 	}
-	case ENovaBossCounterType::SummonBow:
+	case ENovaBossCounterType::Pattern_3:
 	{
 		FVector TargetLocation = BossLocation + Forward * Pattern.AttackRadius;
 		if (PlayerPawn)
@@ -853,7 +942,7 @@ void UNovaBossPatternComponent::PlayExecuteVisual(const FNovaBossAttackPattern& 
 		ImpactVisualMesh->SetVisibility(true);
 		break;
 	}
-	case ENovaBossCounterType::DebrisHammer:
+	case ENovaBossCounterType::Pattern_4:
 	{
 		AreaVisualMesh->SetStaticMesh(NovaBossPatternVisual::LoadMesh(TEXT("/Engine/BasicShapes/Cylinder.Cylinder")));
 		AreaVisualMesh->SetMaterial(0, ExecuteVisualMaterial);
@@ -897,7 +986,7 @@ void UNovaBossPatternComponent::UpdateExecuteVisual(const float DeltaTime)
 	}
 
 	const FNovaBossAttackPattern* Pattern = GetActivePattern();
-	if (!Pattern || Pattern->CounterType != ENovaBossCounterType::SummonBow || !ImpactVisualMesh)
+	if (!Pattern || Pattern->CounterType != ENovaBossCounterType::Pattern_3 || !ImpactVisualMesh)
 	{
 		return;
 	}

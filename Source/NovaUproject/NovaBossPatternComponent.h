@@ -6,11 +6,11 @@
 #include "NovaBossPatternComponent.generated.h"
 
 class ACharacter;
-class ANovaClickMovePlayerController;
 class UAnimMontage;
 class UMaterialInstanceDynamic;
 class UStaticMeshComponent;
-class UNovaCombatVoiceGateComponent;
+class UNovaFloatingHealthBarComponent;
+class UNovaParagonGruxBossComponent;
 
 UENUM(BlueprintType)
 enum class ENovaBossPatternState : uint8
@@ -117,6 +117,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Visual")
 	float ChargeDashStrength = 1400.0f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Health")
+	bool bAutoAddHealthBar = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Boss|Health", meta = (ClampMin = "1"))
+	float BossMaxHealth = 1000.0f;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Boss|Pattern")
 	ENovaBossPatternState CurrentState = ENovaBossPatternState::Idle;
 
@@ -129,8 +135,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Boss|AI")
 	void StopBossAI();
 
+	/** Pattern_1~4 기본 패턴 채우기 (돌진/범위/투사체/360) */
 	UFUNCTION(BlueprintCallable, Category = "Boss|Pattern")
 	void InitializeDefaultGruxPatterns();
+
+	/** C++ 패턴 드라이버: 텔레그래프 시 RequestCounterWindow 자동 호출 */
+	UFUNCTION(BlueprintCallable, Category = "Boss|Pattern")
+	void NotifyPatternTelegraph(ENovaBossCounterType CounterType);
 
 	UFUNCTION(BlueprintCallable, Category = "Boss|Pattern")
 	void ForceNextPattern();
@@ -142,10 +153,13 @@ protected:
 
 private:
 	UFUNCTION()
-	void HandleCounterSucceeded(ENovaBossCounterType CounterType, ENovaVoiceCommand Command);
+	void HandleGruxCounterSucceeded(ENovaBossCounterType CounterType, ENovaVoiceCommand Command);
 
-	void BindPlayerCounterDelegate();
-	void UnbindPlayerCounterDelegate();
+	void BindGruxCounterDelegate();
+	void UnbindGruxCounterDelegate();
+	UNovaParagonGruxBossComponent* ResolveGruxBossComponent() const;
+	bool EnsureGruxBossComponent();
+	void EnsureBossHealthBar();
 
 	ACharacter* GetOwnerCharacter() const;
 	APawn* GetPlayerPawn() const;
@@ -204,5 +218,11 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> ExecuteVisualMaterial;
 
-	TWeakObjectPtr<UNovaCombatVoiceGateComponent> BoundVoiceGate;
+	UPROPERTY(Transient)
+	TObjectPtr<UNovaParagonGruxBossComponent> GruxBossComponent;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UNovaFloatingHealthBarComponent> BossHealthBarComponent;
+
+	bool bGruxIntegrationReady = false;
 };
