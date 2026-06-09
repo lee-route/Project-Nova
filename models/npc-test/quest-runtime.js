@@ -547,6 +547,14 @@
         if (global.QuestGameState) {
           global.QuestGameState.applyTurnInOutcome(sessionKey, turnInResult);
         }
+      } else {
+        flow.instance.state = "turn_in_failed";
+        if (global.QuestGameState) {
+          global.QuestGameState.markTurnInFailed(
+            sessionKey,
+            turnInResult.completion.reason || "보고 조건 미충족"
+          );
+        }
       }
     } else {
       row.summary = step.title || step.type;
@@ -559,6 +567,8 @@
 
     var giver = getQuestGiver(getQuest(flow.questId), flow.giverId);
     var done = flow.instance.stepIndex >= flow.steps.length;
+    var questCompleted =
+      turnInResult && turnInResult.completion && turnInResult.completion.completed;
     return {
       ok: true,
       step: row,
@@ -566,7 +576,9 @@
       instance: flow.instance,
       done: done,
       completionDialogue:
-        done && giver && giver.experience ? giver.experience.completionDialogue : "",
+        done && questCompleted && giver && giver.experience
+          ? giver.experience.completionDialogue
+          : "",
       gameState: global.QuestGameState ? global.QuestGameState.snapshot(sessionKey) : null,
     };
   }
@@ -641,12 +653,16 @@
         : "turn_in_failed"
       : "steps_preview_done";
 
+    var previewCompleted =
+      turnInResult && turnInResult.completion && turnInResult.completion.completed;
+
     return {
       questId: quest.id,
       giverId: giver.giverId,
       introDialogue: quest.introDialogue || "",
       acceptDialogue: resolveAcceptDialogue(giver, quest, options),
-      completionDialogue: (giver.experience && giver.experience.completionDialogue) || "",
+      completionDialogue:
+        previewCompleted && giver.experience ? giver.experience.completionDialogue : "",
       steps: executed,
       instance: instance,
       turnInResult: turnInResult,
@@ -692,8 +708,15 @@
     var turnInResult = (flow && flow.turnInResult) || (lastAdvance && lastAdvance.turnInResult);
     var completed =
       turnInResult && turnInResult.completion && turnInResult.completion.completed;
+    var failReason =
+      !completed && turnInResult && turnInResult.completion
+        ? turnInResult.completion.reason || "보고 조건 미충족"
+        : lastAdvance && lastAdvance.reason
+          ? lastAdvance.reason
+          : "";
     return {
       ok: Boolean(completed),
+      reason: completed ? "" : failReason || "보고 조건 미충족",
       accept: acceptRes.accept,
       briefing: acceptRes.briefing,
       introDialogue: acceptRes.introDialogue,
@@ -701,7 +724,7 @@
       instance: flow && flow.instance,
       turnInResult: turnInResult,
       completionDialogue:
-        (giver && giver.experience && giver.experience.completionDialogue) || "",
+        completed && giver && giver.experience ? giver.experience.completionDialogue : "",
       gameState: global.QuestGameState ? global.QuestGameState.snapshot(sessionKey) : null,
     };
   }

@@ -17,7 +17,7 @@ npm 사용 가능 시: `npm run api`, `npm run api:smoke`, `npm run api:e2e`
 
 상세: [API-QUICKSTART.md](API-QUICKSTART.md)
 
-브라우저: `index.html` 을 정적 서버로 연 뒤 Quest Playtest 패널 사용.
+브라우저: `index.html` 을 정적 서버로 연 뒤 퀘스트 플레이테스트 데모 사용.
 
 언리얼: **[INTEGRATION-GUIDE.txt](INTEGRATION-GUIDE.txt)** (UE 팀 1순위) — 세이브는 UE, API는 turn-in·분기만.  
 요약: [ue-bridge/INTEGRATION.md](ue-bridge/INTEGRATION.md) · 서버 실행: [API-QUICKSTART.md](API-QUICKSTART.md)
@@ -41,10 +41,16 @@ npm 사용 가능 시: `npm run api`, `npm run api:smoke`, `npm run api:e2e`
 
 ## 퀘스트 플레이 (브라우저)
 
-1. **Accept Quest** — 의뢰인별 neutral 대사 + 브리핑
-2. **Next Step** — dialogue → travel → fact_input(보고)
-3. **Run Full Flow** — 위를 자동 + 게임 상태 반영
-4. **Game State** — `gold`, `worldFlags.cargo_destination` 등
+```powershell
+cd models\npc-test
+python -m http.server 5500
+# http://127.0.0.1:5500/index.html
+```
+
+1. 의뢰인 선택 + 조사 보고 입력
+2. **퀘스트 실행** — turn-in·분기·보상 계산
+3. **의뢰인 비교** — 3명 NPC 해석·분기 차이
+4. 결과 카드 + **Game State** — `gold`, `cargo_destination` 등
 
 ## API (JS)
 

@@ -3,8 +3,7 @@
   대상: UE Blueprint / C++ 개발자
   갱신: 2026-06-05
   상세 스펙: GAME-API.json
-  설계·정책: ENGINE-DESIGN.txt
-  진행 현황: PROGRESS.txt
+  설계·진행: ENGINE-DESIGN.txt
 ================================================================================
 
   본 문서는 UE 팀이 npc-test Node API v1에 붙이기 위한 실무 가이드입니다.
@@ -62,8 +61,11 @@
     POST /v1/parse                   파서 디버그
 
   v1에 없음 (404)
-    POST /v1/dialogue          LLM 대사 (v2)
     POST /v1/quest/flow        전체 processSteps HTTP (v2)
+
+  LLM (v1)
+    turn-in 응답 dialogue.npcSpeech  ← UE 기본 (한 HTTP)
+    POST /v1/dialogue                ← 단독 테스트용
 
   travel / interact / 맵 이동 / 3D 대사 / 시네마 → UE 책임
 
@@ -118,26 +120,34 @@
 
 7. Turn-in 응답 — UE가 반드시 읽을 필드
 --------------------------------------------------------------------------------
-  성공 시 (ok: true):
+  HTTP 200 + body.ok === true 인 정상 응답에서도 반드시 확인:
 
-    completion.completed          bool   퀘스트 완료 여부
-    outcomeBranch.branchId        string authority_path | black_market_path | fallback
-    outcome.rewards.gold          number 골드 보상
+    completion.completed          bool   ★ 퀘스트 완료 여부 (이것만 신뢰)
+    completion.reason             string 실패 시 사유 (예: subject missing 마약)
+    outcomeBranch.branchId        string completed==true 일 때만 유효
+    outcome.rewards.gold          number completed==true 일 때만 지급
     outcome.worldFlags.cargo_destination
                                   string authority | black_market | unknown
 
   UE SaveGame 반영 예
-    PlayerGold += outcome.rewards.gold
-    WorldFlags["cargo_destination"] = outcome.worldFlags.cargo_destination
-    QuestState["quest_abandoned_cargo"].completed = completion.completed
-    QuestState["quest_abandoned_cargo"].branchId = outcomeBranch.branchId
+    if (completion.completed) {
+      PlayerGold += outcome.rewards.gold
+      WorldFlags["cargo_destination"] = outcome.worldFlags.cargo_destination
+      QuestState["quest_abandoned_cargo"].completed = true
+      QuestState["quest_abandoned_cargo"].branchId = outcomeBranch.branchId
+    } else {
+      // 골드·완료 대사·completed=true 금지
+      ShowFailUI(completion.reason)
+    }
 
   판정에 쓰지 말 것 (v1)
     knowledgeAudit.*              진단·로그만 (기만 패널티 v2)
     gameState.*                     서버 RAM 데모; authoritative save = UE
 
-  실패 시 (ok: false):
+  HTTP/파싱 오류 (ok: false 또는 4xx):
     error.code, error.message
+
+  흐름·시나리오: QUEST-FLOW-GUIDE.txt
 
 
 8. 자주 하는 실수 — giverId
@@ -264,8 +274,7 @@
   API-QUICKSTART.md        서버 실행·스모크 (마크다운)
   ue-bridge/INTEGRATION.md 동일 내용 요약 (마크다운)
   GAME-API.json            요청·응답 스키마
-  ENGINE-DESIGN.txt        설계·파이프라인
-  PROGRESS.txt             진행률·로드맵
+  ENGINE-DESIGN.txt        설계·진행·로드맵 (통합)
 
 ================================================================================
   문의 시 엔진 담당에게 전달할 정보:

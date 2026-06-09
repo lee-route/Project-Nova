@@ -1,0 +1,132 @@
+================================================================================
+  Project-Nova — 팀용 빠른 따라하기 (npc-test)
+  갱신: 2026-06-11
+================================================================================
+
+
+■ 0. 뭐가 뭔지 (30초)
+--------------------------------------------------------------------------------
+  [웹 index.html]     퀘스트 판정·골드·분기 테스트 (LLM 없음)
+  [API npc-api]       UE 연동 — turn-in 한 번에 판정 + LLM 대사
+  [POST /v1/dialogue] 단독 LLM 테스트용 (UE는 turn-in만 쓰면 됨)
+
+
+■ 1. 코드 받기
+--------------------------------------------------------------------------------
+  git pull origin main
+  cd models\npc-test
+
+
+■ 2. 웹에서 퀘스트 테스트 (추천 · 무료)
+--------------------------------------------------------------------------------
+  (1) cmd 또는 PowerShell — 창 1
+
+      cd c:\Develop\02_capstone\Project-Nova\models\npc-test
+      python -m http.server 5500
+
+      ※ 창 닫지 말 것
+      ※ index.html 더블클릭 금지 (file:// 안 됨)
+
+  (2) 브라우저
+
+      http://127.0.0.1:5500/index.html
+      Ctrl+F5
+
+  (3) 성공 예시
+      의뢰인: 소심한 경비
+      보고: 안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다
+      [퀘스트 실행] → 초록 「퀘스트 완료」 · 골드 150
+
+  ※ LLM 대사는 API turn-in 응답 dialogue.npcSpeech (UE-LLM-GUIDE.txt)
+
+  (4) 실패 예시
+      보고: 12개 확인함  또는  아무거나
+      [퀘스트 실행] → 빨간 「보고 실패」
+
+  (5) 보고 통과 최소 조건
+      · 「마약」 포함 (예: 마약초)  또는
+      · 「화물」+「계곡」 둘 다 포함
+
+
+■ 3. API 서버 (UE / LLM용)
+--------------------------------------------------------------------------------
+  (1) cmd — 창 2
+
+      cd c:\Develop\02_capstone\Project-Nova\models\npc-test
+      node npc-api-server.mjs
+
+  (2) 정상 로그
+      npc-api listening on http://127.0.0.1:8787
+      LLM: openai (live)   ← live 설정 시
+      LLM: openai (mock)   ← 키 없으면 mock
+
+  (3) 브라우저 확인
+      http://127.0.0.1:8787/health
+      http://127.0.0.1:8787/v1/llm/status
+
+
+■ 4. OpenAI LLM (선택 · live 대사)
+--------------------------------------------------------------------------------
+  ★ 팀원에게 API 키 공유하지 말 것 (깃·카톡·채팅 금지)
+  ★ 각자 platform.openai.com 에서 키 발급
+  ★ live = OpenAI 결제/크레딧 필요 (mock는 무료)
+
+  (1) 설정 파일 만들기
+
+      copy llm-config.example.json llm-config.local.json
+
+  (2) llm-config.local.json 수정
+
+      {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "apiKey": "sk-본인_키",
+        "useLive": true
+      }
+
+  (3) 서버 재시작
+      node npc-api-server.mjs
+
+  (4) mock만 쓰려면 (돈 0원)
+      "useLive": false
+      또는 apiKey 비워 두기
+
+
+■ 5. LLM 대사 테스트 (PowerShell · API 서버 켠 상태)
+--------------------------------------------------------------------------------
+  Invoke-RestMethod -Uri "http://127.0.0.1:8787/v1/dialogue" -Method POST `
+    -Body '{"scenarioText":"안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다","receiverProfileKey":"scholar_alric"}' `
+    -ContentType "application/json; charset=utf-8"
+
+  · provider: openai  → live
+  · provider: mock    → 키 없음 / useLive false
+
+
+■ 6. UE 팀 — 호출 순서
+--------------------------------------------------------------------------------
+  ① GET  /v1/quest/accept-dialogue?giverId=guard_timid  (선택)
+  ② (플레이어 조사 · 맵 연출)
+  ③ POST /v1/quest/turn-in  ← 판정·골드·LLM 대사 (한 번에)
+  ④ completion.completed == true → dialogue.npcSpeech UI 표시
+  ⑤ false → 실패 UI, 골드·완료 대사 금지
+
+  ★ UE 1페이지: UE-LLM-GUIDE.txt
+  상세: INTEGRATION-GUIDE.txt · QUEST-FLOW-GUIDE.txt
+
+
+■ 7. 자주 하는 실수
+--------------------------------------------------------------------------------
+  · index.html file:// 로 열기        → JSON 로드 실패
+  · PowerShell 에서 cd ... && python  → && 대신 줄 나눠 실행
+  · 8787 주소로 웹 UI 기대            → 8787=API만, 웹=5500
+  · 12개 확인함 만 입력               → 마약/화물 없어서 실패 (정상)
+  · llm-config.local.json 깃 push    → 키 유출 (절대 금지)
+
+
+■ 8. 관련 파일
+--------------------------------------------------------------------------------
+  TEAM-QUICK-GUIDE.txt     ← 이 파일
+  UE-LLM-GUIDE.txt         UE LLM 1페이지 (turn-in + dialogue)
+  API-QUICKSTART.md        API 상세
+  QUEST-FLOW-GUIDE.txt     퀘스트·UE 흐름
+  llm-config.example.json  설정 예시 (키 없음)

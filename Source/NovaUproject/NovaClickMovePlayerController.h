@@ -5,6 +5,7 @@
 #include "NovaVoiceTypes.h"
 #include "NovaClickMovePlayerController.generated.h"
 
+class UNavigationSystemV1;
 class UFXSystemAsset;
 class UNovaCombatVoiceGateComponent;
 class UNovaVoiceCaptureComponent;
@@ -51,9 +52,17 @@ public:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Voice|Visual")
 	void OnCompanionHelpVisualRequested();
 
+	/** bp_npc / BPI_Interactable — WBP_Dialogue (공유 프로젝트와 동일 API) */
+	UFUNCTION(BlueprintCallable, Category = "Nova|Dialogue")
+	void StartDialogueMode(AActor* NpcActor = nullptr);
+
+	UFUNCTION(BlueprintCallable, Category = "Nova|Dialogue")
+	void EndDialogueMode();
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void OnPossess(APawn* InPawn) override;
+	virtual void OnUnPossess() override;
 	virtual void SetupInputComponent() override;
 	virtual void PlayerTick(float DeltaTime) override;
 
@@ -77,22 +86,38 @@ protected:
 	UFUNCTION(BlueprintImplementableEvent, Category = "Skill")
 	void BP_UseSkillR(ENovaVoiceCommand CurrentWeapon);
 
-private:
-	void OnLeftClickPressed();
-	void OnLeftClickReleased();
-	void UpdateDestinationUnderCursor(bool bPrintDebug);
+protected:
+	virtual bool InputKey(const FInputKeyEventArgs& EventArgs) override;
 
-	void OnVPressed();
+private:
+	void OnRightClickPressed();
+	void OnRightClickReleased();
+	void UpdateDestinationUnderCursor(bool bPrintDebug);
+	bool GetWalkableHitUnderCursor(FHitResult& OutHit) const;
+	bool ProjectCursorToWalkablePoint(FVector& InOutWorldPoint, FHitResult& OutHit) const;
+	bool FindWalkableHitOnCameraRay(const FVector& PlanePoint, FHitResult& OutHit) const;
+	bool SnapDestinationToNavMesh(FVector& InOutLocation) const;
+	void RefreshNavPath();
+	bool ShouldUseNavMeshPath(const APawn* InPawn, const UNavigationSystemV1* NavSys) const;
+	FVector GetActiveMoveTarget() const;
+	static bool IsStairSurfaceHit(const FHitResult& Hit);
+	static bool IsWalkableSurfaceHit(const FHitResult& Hit, float MinNormalZ);
+	void ApplyFixedOrbitCamera();
+	void ApplyGameplayInputMode();
+	void ApplyMovementRotationSettings(APawn* InPawn);
+	void ConsumeLookAxis(float Value);
+	void TickDialogueInput();
+	bool IsDialogueActive() const;
+	void TryStartNpcDialogue();
+
 	void OnDashPressed();
+	void OnJumpPressed();
 
 	void OnSkillQ();
 	void OnSkillW();
 	void OnSkillE();
 	void OnSkillR();
 
-	void MoveForward(float Value);
-	void MoveRight(float Value);
-	void ApplyTopDownCamera();
 	void SpawnClickMoveIndicator(const FVector& WorldLocation);
 
 	bool bHasDestination = false;
@@ -104,7 +129,59 @@ private:
 	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
 	float AcceptanceRadius = 50.0f;
 
-	// If true, show cursor only while LMB is held.
+	/** 바닥 판정: Impact Normal Z >= 이 값 (0.55 ≈ 57° 이하 기울기) */
+	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
+	float WalkableMinNormalZ = 0.55f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
+	float ClickMoveTraceDistance = 20000.0f;
+
+	/** 커서 XY → 위에서 아래로 바닥 탐색 (건축물 관통 방지) */
+	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
+	float ClickMoveVerticalTraceUp = 400.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
+	float ClickMoveVerticalTraceDown = 3000.0f;
+
+	/** 커서→평면 투영점과 XY가 이 거리 이내인 바닥만 인정 (아치 너머 바닥 오선택 방지) */
+	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
+	float ClickMoveMaxXYSlop = 280.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
+	float NavProjectionExtent = 500.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
+	float NavProjectionVerticalExtent = 2000.0f;
+
+	/** 계단·경사면 오르기 (캐릭터 이동) */
+	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
+	float MaxStepHeight = 60.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
+	float MaxWalkableFloorAngle = 52.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "ClickMove")
+	bool bUseNavMeshPathfinding = true;
+
+	TArray<FVector> NavPathPoints;
+	int32 NavPathIndex = 0;
+
+	bool bDestinationRequiresDirectMove = false;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera")
+	float FixedOrbitArmLength = 900.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera")
+	float FixedOrbitPitch = -45.0f;
+
+	/** 메시 기본 방향 보정 (3시→12시: -90) */
+	UPROPERTY(EditDefaultsOnly, Category = "Camera")
+	float CharacterFacingYawOffset = -90.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Nova|Dialogue")
+	float NpcInteractRadius = 350.0f;
+
+	// If true, show cursor while RMB is held for click-move.
 	UPROPERTY(EditDefaultsOnly, Category = "Cursor")
 	bool bShowCursorWhileHoldingMove = true;
 
@@ -142,6 +219,30 @@ private:
 	void OnCounterSucceeded(ENovaBossCounterType CounterType, ENovaVoiceCommand Command);
 
 	void ApplyWeaponVisualToPawn(ENovaVoiceCommand WeaponCommand);
+
+	void TurnCamera(float AxisValue);
+	void ApplyCameraYaw(float DeltaTime);
+	bool IsFirstPersonDungeonPawn() const;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Camera")
+	float CameraTurnSpeed = 90.0f;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Camera")
+	float CameraYawDegrees = 0.0f;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Nova|Dialogue")
+	TObjectPtr<UUserWidget> ActiveDialogueWidget;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Nova|Dialogue")
+	TSubclassOf<UUserWidget> DialogueWidgetClass;
+
+	UPROPERTY(VisibleInstanceOnly, Category = "Nova|Dialogue")
+	TObjectPtr<AActor> ActiveDialogueNpc;
+
+	bool bPrevGKeyDown = false;
+
+	bool bCameraYawLeft = false;
+	bool bCameraYawRight = false;
 
 	void OnWeaponKey1();
 	void OnWeaponKey2();

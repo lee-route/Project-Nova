@@ -89,6 +89,21 @@ UE에서 반영할 필드:
 - `outcomeBranch.branchId` — `authority_path` | `black_market_path` | `fallback`
 - `outcome.rewards.gold`
 - `outcome.worldFlags.cargo_destination`
+- **`dialogue.npcSpeech`** — 알릭 LLM 대사 (완료 시 기본 포함, `includeDialogue: false`로 생략 가능)
+
+```powershell
+$body = @{
+  questId = "quest_abandoned_cargo"
+  giverId = "guard_timid"
+  scenarioText = "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다"
+  sessionKey = "ue-player-1"
+} | ConvertTo-Json -Compress
+
+$r = Invoke-RestMethod -Uri "http://127.0.0.1:8787/v1/quest/turn-in" -Method POST -Body $body -ContentType "application/json; charset=utf-8"
+$r.dialogue.npcSpeech
+```
+
+UE 1페이지: **`UE-LLM-GUIDE.txt`**
 
 ## 5. 자동 테스트
 
@@ -103,8 +118,90 @@ npm run api:smoke
 npm run api:e2e
 ```
 
-## 6. 문서
+## 6. OpenAI LLM 대사
+
+퀘스트 **판정·골드에는 영향 없음**. NPC **대사 연출**만 생성.
+
+### UE 권장 (한 번의 turn-in)
+
+완료 시 `POST /v1/quest/turn-in` 응답에 `dialogue` 가 기본 포함됩니다.
+별도 `/v1/dialogue` 호출은 **단독 테스트**용입니다.
+
+```powershell
+$r = Invoke-RestMethod -Uri "http://127.0.0.1:8787/v1/quest/turn-in" -Method POST -Body (@{
+  questId = "quest_abandoned_cargo"
+  giverId = "guard_timid"
+  scenarioText = "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다"
+  sessionKey = "ue-1"
+} | ConvertTo-Json -Compress) -ContentType "application/json; charset=utf-8"
+
+$r.dialogue.npcSpeech   # 알릭 대사
+$r.dialogue.provider    # openai | mock
+```
+
+LLM 생략: `"includeDialogue": false` in turn-in body.
+
+### 설정 (택 1)
+
+**A. 환경 변수 (권장 — 키를 파일에 안 남김)**
+
+```powershell
+cd models\npc-test
+$env:OPENAI_API_KEY = "sk-여기에_키"
+$env:NOVA_LLM_PROVIDER = "openai"
+$env:NOVA_LLM_MODEL = "gpt-4o-mini"
+$env:NOVA_LLM_USE_LIVE = "true"
+node npc-api-server.mjs
+```
+
+**B. 로컬 설정 파일**
+
+```powershell
+copy llm-config.example.json llm-config.local.json
+# apiKey, useLive: true 수정 (git에 올리지 않음)
+node npc-api-server.mjs
+```
+
+### 확인
+
+```
+GET http://127.0.0.1:8787/v1/llm/status
+GET http://127.0.0.1:8787/health   → llmEnabled: true
+```
+
+`useLive: false` 또는 키 없으면 **mock** 대사 (API 비용 없음).
+
+### 호출 예 — turn-in 직후 (레거시 · UE는 turn-in만 권장)
+
+```powershell
+# turn-in 응답에 dialogue 포함됨 — 아래 2단계는 단독 /v1/dialogue 테스트용
+$turnIn = Invoke-RestMethod -Uri "http://127.0.0.1:8787/v1/quest/turn-in" -Method POST -Body (@{
+  questId = "quest_abandoned_cargo"
+  giverId = "guard_timid"
+  scenarioText = "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다"
+  sessionKey = "ue-1"
+} | ConvertTo-Json -Compress) -ContentType "application/json; charset=utf-8"
+
+$turnIn.dialogue.npcSpeech
+
+# (선택) POST /v1/dialogue 단독
+$dlg = Invoke-RestMethod -Uri "http://127.0.0.1:8787/v1/dialogue" -Method POST -Body (@{
+  npcProfileKey = "scholar_alric"
+  interpretedFacts = $turnIn.propagation.interpretedFacts
+} | ConvertTo-Json -Depth 10 -Compress) -ContentType "application/json; charset=utf-8"
+```
+
+### 호출 예 — 보고문만 (단독 테스트)
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8787/v1/dialogue" -Method POST -Body (@{
+  scenarioText = "안개 계곡에 밀수 화물이 버려져 있다. 마약초 열두 개가 들어 있다"
+  receiverProfileKey = "scholar_alric"
+} | ConvertTo-Json -Compress) -ContentType "application/json; charset=utf-8"
+```
+
+## 7. 문서
 
 - 스펙: `GAME-API.json`
-- UE: `ue-bridge/INTEGRATION.md`
-- 설계: `ENGINE-DESIGN.txt` §9
+- UE: `ue-bridge/INTEGRATION.md` · `QUEST-FLOW-GUIDE.txt`
+- 설계: `ENGINE-DESIGN.txt` §13

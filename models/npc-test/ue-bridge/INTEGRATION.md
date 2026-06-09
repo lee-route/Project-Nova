@@ -1,6 +1,8 @@
 # Unreal Engine ↔ npc-test API (v1)
 
-**UE 팀 1순위 문서:** `../INTEGRATION-GUIDE.txt` (동일 내용 + Blueprint 체크리스트·트러블슈팅)
+**UE LLM 1페이지:** `../UE-LLM-GUIDE.txt`  
+**UE 전체:** `../INTEGRATION-GUIDE.txt`  
+**API 상세:** `../API-QUICKSTART.md`
 
 `nova/` 프로젝트에는 아직 C++/Blueprint 연동 코드가 없습니다.  
 v1은 **로컬 Node API 서버**에 HTTP로 붙이는 방식을 권장합니다.
@@ -12,29 +14,25 @@ cd models/npc-test
 npm run api
 ```
 
-상세: `../API-QUICKSTART.md`
-
 ## 권한·세이브
 
 - **Authoritative save: UE** — gold, `worldFlags`, 퀘스트 진행은 언리얼 세이브게임이 소유합니다.
 - API `sessionKey`는 **평판·서버 RAM 데모**용입니다. 서버 재시작 시 초기화됩니다.
-- 필요 시 `GET /v1/session/snapshot` / `POST /v1/session/import`로 dev 복원만 사용하세요.
 
-## v1에서 쓰는 엔드포인트 (2+1)
+## v1 엔드포인트
 
 | Method | Path | 용도 |
 |--------|------|------|
-| POST | `/v1/quest/turn-in` | 플레이어 보고 → 분기·보상 |
+| POST | `/v1/quest/turn-in` | 보고 → 분기·보상 **+ LLM 대사** (`dialogue.npcSpeech`) |
 | GET | `/v1/quest/accept-dialogue?giverId=&sessionKey=` | 수락 대사 (선택) |
-| POST | `/v1/parse` | 디버그·사전 검증 (선택) |
-
-**v1에 없음:** LLM 대사, `runQuestFlow` 전체, travel/interact (UE 맵에서 처리).
+| POST | `/v1/dialogue` | LLM 단독 테스트 (UE는 turn-in만 권장) |
+| POST | `/v1/parse` | 디버그 (선택) |
 
 ## UE Blueprint 흐름 (권장)
 
-1. 플레이어가 조사·이동 완료 (UE)
-2. 보고 UI에서 문자열 수집 → `scenarioText`
-3. `HTTP POST` `http://127.0.0.1:8787/v1/quest/turn-in`
+1. 플레이어 조사·이동 (UE)
+2. 보고 UI → `scenarioText`
+3. **`HTTP POST` `/v1/quest/turn-in`** (한 번)
 
 ```json
 {
@@ -45,38 +43,23 @@ npm run api
 }
 ```
 
-`giverId`는 **퀘스트를 준 의뢰인**입니다 (`GET /v1/quest/meta` 참고).  
-학자 알릭은 보고 **수신** 쪽(`turnInProfileKey`)이며, `giverId`와 다를 수 있습니다.
+4. 응답 처리:
 
-4. 응답에서 UE가 반영할 필드:
+| 필드 | UE 동작 |
+|------|---------|
+| `completion.completed` | `false` → 실패 UI, 보상 금지 |
+| `outcome.rewards.gold` | SaveGame |
+| `outcome.worldFlags.cargo_destination` | SaveGame |
+| `dialogue.npcSpeech` | 알릭 대화 UI / 자막 |
+| `dialogue.provider` | `openai` / `mock` (디버그) |
 
-- `outcome.rewards.gold`
-- `outcome.worldFlags.cargo_destination` (`authority` | `black_market` | `unknown`)
-- `completion.completed`
-- `outcomeBranch.branchId`
+5. LLM 생략: `"includeDialogue": false` in request body.
 
-5. `knowledgeAudit` — **판정에 사용하지 않음** (v1 진단만). 기만·조사 패널티는 API v2.
+## LLM 설정
 
-## investigation → WorldTruth (선택)
-
-조사 완료 시 UE가 알고 있는 객관 사실을 같이 보낼 수 있습니다:
-
-```json
-{
-  "worldTruthFacts": [
-    { "subject": "마약초", "quantity": 12, "is_countable": true, "action_type": "inventory", "target": "안개 계곡" }
-  ]
-}
-```
-
-`knowledgeAudit.worldCompare`에만 반영되며, v1에서는 gold 분기를 바꾸지 않습니다.
-
-## 오류 형식
-
-```json
-{ "ok": false, "error": { "code": "missing_giver_id", "message": "...", "details": null } }
-```
+서버 PC에서 `llm-config.local.json` 또는 env (`OPENAI_API_KEY`, `NOVA_LLM_USE_LIVE=true`).  
+키 없으면 **mock** 대사 (비용 없음). `GET /v1/llm/status` 확인.
 
 ## 상세 스펙
 
-`../GAME-API.json` (version 2)
+`../GAME-API.json`

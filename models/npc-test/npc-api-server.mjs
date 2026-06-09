@@ -1,11 +1,12 @@
 /**
- * Phase A HTTP API — v1: parse + turn-in (+ accept-dialogue, session snapshot).
- * LLM / runQuestFlow / travel — not exposed (UE local).
+ * Phase A HTTP API — v1: parse + turn-in + accept-dialogue + LLM dialogue.
  *
  * Usage: node npc-api-server.mjs [--port=8787]
+ * OpenAI: see llm-config.local.json or OPENAI_API_KEY + NOVA_LLM_USE_LIVE=true
  */
 import http from "http";
 import { createApiRuntime } from "./api-bootstrap.mjs";
+import { dialogueFromTurnIn, handleDialogueRequest } from "./dialogue-api.mjs";
 
 const rt = createApiRuntime();
 
@@ -16,12 +17,14 @@ export function apiError(code, message, details) {
   };
 }
 
-export function slimTurnInResponse(turnIn) {
+export function slimTurnInResponse(turnIn, dialogue) {
   if (!turnIn) return null;
+  var hasDialogue = Boolean(dialogue && dialogue.ok && dialogue.npcSpeech);
   return {
     ok: true,
     questId: turnIn.questId,
     giverId: turnIn.giverId,
+    turnInProfileKey: turnIn.turnInProfileKey,
     sessionKey: turnIn.sessionKey,
     facts: turnIn.facts,
     propagation: turnIn.propagation,
@@ -37,8 +40,14 @@ export function slimTurnInResponse(turnIn) {
     knowledgeAudit: turnIn.knowledgeAudit,
     gameState: turnIn.gameStateApply && turnIn.gameStateApply.state,
     v1OutcomeSource: turnIn.v1OutcomeSource,
-    llmExcluded: true,
+    llmExcluded: !hasDialogue,
+    dialogue: dialogue,
   };
+}
+
+export function shouldIncludeDialogue(body, turnIn) {
+  if (body.includeDialogue === false) return false;
+  return Boolean(turnIn && turnIn.completion && turnIn.completion.completed);
 }
 
 export async function handleApiRequest(req, res, runtime) {
@@ -67,9 +76,12 @@ export async function handleApiRequest(req, res, runtime) {
         "/v1/parse",
         "/v1/quest/turn-in",
         "/v1/quest/accept-dialogue",
+        "/v1/dialogue",
+        "/v1/llm/status",
         "/v1/session/snapshot",
       ],
-      llmEnabled: false,
+      llmEnabled: Boolean(R.LlmAdapter && R.LlmAdapter.isLive && R.LlmAdapter.isLive()),
+      llmConfig: R.llmConfig || null,
       authoritativeSave: "unreal_engine",
     });
     return;
@@ -135,7 +147,11 @@ export async function handleApiRequest(req, res, runtime) {
         applyGameState: body.applyGameState !== false,
         includeKnowledgeAudit: body.includeKnowledgeAudit !== false,
       });
-      const payload = slimTurnInResponse(turnIn);
+      var dialogue = null;
+      if (shouldIncludeDialogue(body, turnIn)) {
+        dialogue = await dialogueFromTurnIn(R, turnIn);
+      }
+      const payload = slimTurnInResponse(turnIn, dialogue);
       sendJson(res, 200, payload);
     } catch (e) {
       sendJson(res, 400, apiError("turn_in_failed", String(e.message || e)));
@@ -174,8 +190,33 @@ export async function handleApiRequest(req, res, runtime) {
     return;
   }
 
-  if (path.startsWith("/v1/dialogue") || path.startsWith("/v1/llm")) {
-    sendJson(res, 404, apiError("not_in_v1", "LLM endpoints deferred to v2; use UE local dialogue"));
+  if (req.method === "GET" && path === "/v1/llm/status") {
+    const cfg = R.LlmAdapter ? R.LlmAdapter.getConfig() : null;
+    sendJson(res, 200, {
+      ok: true,
+      llmEnabled: Boolean(R.LlmAdapter && R.LlmAdapter.isLive && R.LlmAdapter.isLive()),
+      config: cfg,
+      questJudgmentExcluded: true,
+    });
+    return;
+  }
+
+  if (req.method === "POST" && path === "/v1/dialogue") {
+    try {
+      const payload = await handleDialogueRequest(R, body);
+      if (!payload.ok) {
+        sendJson(res, 400, apiError(payload.error.code, payload.error.message));
+        return;
+      }
+      sendJson(res, 200, payload);
+    } catch (e) {
+      sendJson(res, 500, apiError("dialogue_failed", String(e.message || e)));
+    }
+    return;
+  }
+
+  if (path.startsWith("/v1/llm") && path !== "/v1/llm/status") {
+    sendJson(res, 404, apiError("not_found", "Unknown LLM path: " + path));
     return;
   }
 
@@ -248,6 +289,11 @@ function main() {
     console.log("  POST /v1/parse");
     console.log("  POST /v1/quest/turn-in");
     console.log("  GET  /v1/quest/accept-dialogue?giverId=guard_timid&sessionKey=...");
+    console.log("  POST /v1/dialogue");
+    console.log("  GET  /v1/llm/status");
+    if (rt.llmConfig) {
+      console.log("  LLM:", rt.llmConfig.provider, rt.llmConfig.useLive ? "(live)" : "(mock)");
+    }
     console.log("");
     console.log("Quick test: npm run api:smoke");
   });

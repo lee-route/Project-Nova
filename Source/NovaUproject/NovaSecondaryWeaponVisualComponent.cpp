@@ -1,5 +1,6 @@
 #include "NovaSecondaryWeaponVisualComponent.h"
 
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "GameFramework/Character.h"
@@ -9,6 +10,33 @@ namespace
 	UStaticMesh* LoadEngineMesh(const TCHAR* Path)
 	{
 		return LoadObject<UStaticMesh>(nullptr, Path);
+	}
+
+	FName ResolveWeaponAttachSocket(USkeletalMeshComponent* SkMesh)
+	{
+		if (!SkMesh)
+		{
+			return NAME_None;
+		}
+
+		static const FName SocketCandidates[] = {
+			TEXT("hand_r"),
+			TEXT("Hand_R"),
+			TEXT("hand_R"),
+			TEXT("RightHand"),
+			TEXT("WeaponSocket"),
+			TEXT("weapon_r"),
+		};
+
+		for (const FName SocketName : SocketCandidates)
+		{
+			if (SkMesh->DoesSocketExist(SocketName))
+			{
+				return SocketName;
+			}
+		}
+
+		return NAME_None;
 	}
 }
 
@@ -72,10 +100,7 @@ UStaticMeshComponent* UNovaSecondaryWeaponVisualComponent::CreatePlaceholderWeap
 			if (SkMesh->IsRegistered())
 			{
 				AttachParent = SkMesh;
-				if (SkMesh->DoesSocketExist(AttachSocketName))
-				{
-					SocketName = AttachSocketName;
-				}
+				SocketName = ResolveWeaponAttachSocket(SkMesh);
 			}
 		}
 	}
@@ -85,6 +110,10 @@ UStaticMeshComponent* UNovaSecondaryWeaponVisualComponent::CreatePlaceholderWeap
 		return nullptr;
 	}
 
+	const FVector LocationOffset = SocketName.IsNone()
+		? FVector(30.f, 15.f, 0.f)
+		: AttachLocationOffset;
+
 	UStaticMeshComponent* MeshComponent = NewObject<UStaticMeshComponent>(
 		Owner,
 		UStaticMeshComponent::StaticClass(),
@@ -92,7 +121,7 @@ UStaticMeshComponent* UNovaSecondaryWeaponVisualComponent::CreatePlaceholderWeap
 	MeshComponent->SetStaticMesh(Mesh);
 	MeshComponent->SetRelativeScale3D(Scale);
 	MeshComponent->SetRelativeRotation(Rotation);
-	MeshComponent->SetRelativeLocation(AttachLocationOffset);
+	MeshComponent->SetRelativeLocation(LocationOffset);
 	MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	MeshComponent->SetupAttachment(AttachParent, SocketName);
 	Owner->AddInstanceComponent(MeshComponent);

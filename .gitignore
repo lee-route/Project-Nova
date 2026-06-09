@@ -32,6 +32,29 @@ Config/LocalNovaVoice.ini
 _local-only/
 _import_tmp/
 
+# Local merge source (nova game zip extract)
+nova 게임 압축본/
+
+# Large assets — keep locally only (see docs/LOCAL_ASSETS.md)
+Content/ParagonTerra/
+Content/ParagonSevarog/
+Content/ParagonGrux/
+Content/ParagonKwang/
+Content/ParagonRampage/
+Content/ROG_Creatures/
+Content/Whisper/
+Content/DemoTemplate/
+Content/ai/
+Content/__ExternalActors__/DemoTemplate/
+Content/__ExternalActors__/Variant_Horror/
+Content/__ExternalActors__/Variant_Shooter/
+Content/__ExternalObjects__/DemoTemplate/
+Content/__ExternalObjects__/Variant_Horror/
+Content/__ExternalObjects__/Variant_Shooter/
+
+# Blueprint patch backups
+*.uasset.bak
+
 # Unreal generated project files
 *.xcodeproj
 *.xcworkspace

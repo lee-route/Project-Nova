@@ -1,8 +1,15 @@
 {
-  "_comment": "복사: llm-config.local.json (git 제외). 브라우저는 localStorage도 사용 가능.",
+  "_comment": "복사: llm-config.local.json (git 제외). 또는 환경 변수 사용.",
   "provider": "openai",
   "model": "gpt-4o-mini",
   "apiKey": "sk-REPLACE_ME",
   "baseUrl": "",
-  "useLive": false
+  "useLive": true,
+  "_env": {
+    "OPENAI_API_KEY": "sk-...",
+    "NOVA_LLM_PROVIDER": "openai",
+    "NOVA_LLM_MODEL": "gpt-4o-mini",
+    "NOVA_LLM_USE_LIVE": "true",
+    "OPENAI_BASE_URL": "(optional, OpenAI-compatible proxy)"
+  }
 }
